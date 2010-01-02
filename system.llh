@@ -1,0 +1,66 @@
+#ifndef SYSTEM_LLH
+#define SYSTEM_LLH
+
+;**********************************************************************
+; system.llh
+;
+; Public declarations of external objects--mainly C library functions
+; and helper functions defined in system.c.
+;
+; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "c_defs.llh"
+
+; Assertions
+
+    declare ccc void @abort()
+
+    ; These are defined in system_ll.llm
+    declare ccc void @cant_happen_impl(%c_int %line)
+
+    #if NDEBUG
+    #define cant_happen()
+    #else
+    #define cant_happen() call ccc void @cant_happen_impl(%c_int __LINE__)
+    #endif
+
+    declare ccc void @assert_impl(i1 %test, %c_int %line)
+
+    ; Usage note: this is much less useful than in C, because there is no
+    ; expression language.  You must assign the i1 result of a test to a
+    ; register manually, then pass it to assert().  We can't provide any
+    ; help because the "non-hygenic macros" problem is worse than in C, and
+    ; anything that uses a register will capture from the environment.
+    #if NDEBUG
+    #define assert(test)
+    #else
+    #define assert(test) call ccc void @assert_impl(i1 test, %c_int __LINE__)
+    #endif
+
+
+; FILE I/O
+    declare ccc %c_int @puts(%c_char *)                     ; int puts(char*)
+    declare ccc %c_int @getchar()                      ; int getchar()
+    declare ccc %c_int @putchar(%c_int)                   ; int putchar(int)
+
+    declare ccc %c_int @feof(%c_char*)
+    declare ccc %c_int @ferror(%c_char*)
+
+    declare ccc %c_int @printf(%c_char*, ...)
+
+; Malloc & friends
+
+    declare ccc i8* @malloc(%c_size_t %size)
+
+; string.h
+
+    declare ccc %c_char @strndup(%c_char*, %c_size_t %len)
+
+; Helper code in system_c.c to be linked in
+
+    declare ccc %c_char* @getstdfileptr(%c_int)
+
+#endif

@@ -1,0 +1,20 @@
+;**********************************************************************
+; testSkel.llm
+;
+; Unit test for Skel.
+;
+; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "system.llh"
+#include "Skel.llh"
+
+define %c_int
+@main()
+{
+
+    ret %c_int 0
+}
+

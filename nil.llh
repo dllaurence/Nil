@@ -1,0 +1,30 @@
+#ifndef NIL_LLH
+#define NIL_LLH
+
+;**********************************************************************
+; nil.llh
+;
+; Nil global definitions.
+;
+; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "system.llh"
+
+;**********************************************************************
+; Global definitions
+;
+;**********************************************************************
+
+; Calling convention for all internal functions
+#define NILCC fastcc
+
+; A small attempt to be machine word independent.  Generally
+%Word = type %c_int
+#define WORD_T_SIZEOF C_INT_SIZEOF
+#define WORD_T_BITSOF C_INT_BITSOF
+
+#endif
+
