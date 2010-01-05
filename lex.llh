@@ -12,10 +12,15 @@
 ;**********************************************************************
 
 #include "nil.llh"
-#include "system.llh"
 
-    #define LEX_FINISHED IO_EOF
+    #define LEX_EOF        -1
+    #define LEX_IOERROR    -2
+    #define LEX_BADCHAR    -3
+    #define LEX_SYMBOL     -4
 
-    declare NILCC %c_int @NextChar()
+    ; For debugging only
+    #ifndef NDEBUG
+    declare NILCC %c_int @GetValidChar()
+    #endif
 
 #endif

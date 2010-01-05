@@ -34,6 +34,8 @@
 ;
 ;   * Using malloc()
 ;   * Using getchar and other stdio functions instead of read() and write().
+;   * Using the C string-handling functions.  Would prefer counted
+;     strings anyway.
 ;
 ; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
@@ -49,24 +51,41 @@
 ;
 ;**********************************************************************
 
+#define PROMPTARRAY_LEN 6
+@promptArray = internal constant [PROMPTARRAY_LEN x %c_char] c"nil> \00"
+
 define %c_int
 @main(%c_int %argc, %c_char **%argv)
 {
-    ; Dummy basic block, because we can't branch to the first block
+    br label %PrintPrompt
+
+PrintPrompt:
+    %promptString = getelementptr [PROMPTARRAY_LEN x %c_char]* @promptArray, i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %promptString)
     br label %ReadChar
 
-    ; At this stage main is playing the role of the main lexer for
-    ; test purposes.
 ReadChar:
-    %char = call NILCC %c_int @NextChar()
-    %finished = icmp eq %c_int %char, LEX_FINISHED
-    br i1 %finished, label %Exit, label %PrintChar
+    %char = call NILCC %c_int @GetValidChar()
+
+    switch %c_int %char, label %PrintChar [
+
+        %c_int LEX_EOF,      label %Exit
+        %c_int LEX_IOERROR,  label %Exit
+        %c_int LEX_BADCHAR,  label %ReadChar
+
+        %c_int ASCII_NEWLINE,  label %NewLine
+    ]
 
 PrintChar:
     call ccc %c_int @putchar(%c_int %char)
     br label %ReadChar
 
+NewLine:
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+    br label %PrintPrompt
+
 Exit:
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
     ret %c_int 0
 }
 

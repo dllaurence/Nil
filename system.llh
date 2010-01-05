@@ -7,6 +7,8 @@
 ; Public declarations of external objects--mainly C library functions
 ; and helper functions defined in system.c.
 ;
+; Many of these are here for debugging.
+;
 ; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
 ;
@@ -14,15 +16,37 @@
 
 #include "c_defs.llh"
 
-; ASCII codes
+; ASCII codes (very handy since we don't have C's char constants)
 
-    ; Some ASCII values; not special to the lexer so could go into system.llh
+    ; Whitespace
     #define ASCII_TAB        9
     #define ASCII_NEWLINE   10
     #define ASCII_VTAB      11
     #define ASCII_FORMFEED  12
     #define ASCII_CR        13
     #define ASCII_SPACE     32
+
+    ; Symbols
+    #define ASCII_DQUOTE    34
+    #define ASCII_HASH      35
+    #define ASCII_SQUOTE    39
+    #define ASCII_LPAREN    40
+    #define ASCII_RPAREN    41
+    #define ASCII_COLON     58
+
+    ; Digits
+    #define ASCII_0         48
+    #define ASCII_1         49
+
+    ; Majescules
+    #define ASCII_A         65
+    #define ASCII_B         66
+    #define ASCII_C         67
+    #define ASCII_D         68
+
+    ; Miniscules
+    #define ASCII_a         97
+
     #define ASCII_DEL      127
 
 ; Assertions
@@ -51,9 +75,11 @@
     #define assert(test) call ccc void @assert_impl(i1 test, %c_int __LINE__)
     #endif
 
-
 ; stdio
+
+    ; libc
     declare ccc %c_int @puts(%c_char *)                     ; int puts(char*)
+    declare ccc %c_int @fputs(%c_char*, i8*)
     declare ccc %c_int @getchar()                      ; int getchar()
     declare ccc %c_int @putchar(%c_int)                   ; int putchar(int)
 
@@ -62,8 +88,12 @@
 
     declare ccc %c_int @printf(%c_char*, ...)
 
-    ; Extra, in system_ll.llm
+    ; Additional I/O code in system_c.c
+    declare ccc %c_char* @getstdfileptr(%c_int)
 
+    ; Additional I/O code in system_ll.llm
+    declare ccc %c_int @putstring(%c_char*) ; like puts(), but without the extra newline
+    declare ccc void @puti(%c_int)
 
     #define IO_EOF      -1
     #define IO_ERROR    -10
@@ -74,12 +104,12 @@
 
     declare ccc i8* @malloc(%c_size_t %size)
 
-; string.h
+; Strings
 
     declare ccc %c_char @strndup(%c_char*, %c_size_t %len)
 
-; Helper code in system_c.c to be linked in
+; Useful Macros
 
-    declare ccc %c_char* @getstdfileptr(%c_int)
+    #define DECLARE_STRING(name, len)
 
 #endif

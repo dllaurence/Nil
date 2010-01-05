@@ -1,29 +1,29 @@
 README
 
-Nil: Not an Implementation of Lisp
+    Nil: Not an Implementation of Lisp
 
 ChangeLog:
 
-    v0.0.1 * Echoes input lines and detects EOF, illegal characters, and
-             I/O errors.
+    v0.0.1 * Echoes input lines and detects EOF, illegal characters,
+             and I/O errors.
 
 Nil is (will be, at this stage) a minimal lisp implemented directly in
-handwritten LLVM Intermediate Representation ("LLVM Assembly").  See the
-discussion at stoneknives.posterous.com for excuses as to why this is not a
-deranged act (but note that you don't have to believe a word of it).  The code
-is hosted at http://github.com/dllaurence/Nil.
+handwritten LLVM Intermediate Representation ("LLVM Assembly").  See
+the discussion at http://stoneknives.posterous.com for excuses as to
+why this is not a deranged act (but note that you don't have to believe
+a word of it).  The code is hosted at http://github.com/dllaurence/Nil.
 
-For the time being the code is licensed under the LGPL3, just so I'm not guilty
-of releasing code into the wild with ambiguous terms.  But frankly, if this is
-a concern for you, get help for your compulsion to treat an experimental
-project as more than it is. :-)
+For the time being the code is licensed under the LGPL3, just so I'm
+not guilty of releasing code into the wild with ambiguous terms.  But
+frankly, if this is a concern for you, get help for your compulsion to
+treat an experimental project as more than it is. :-)
 
 Building:
 
-    Um...just type "make".  If it fails, figure out why and send me a patch.  A
-    real build system would probably involve more red tape than all the Nil
-    code.  For that matter, this README is probably longer than the Nil code.
-    :-)  You'll need LLVM and a C compiler.
+    Um...just type "make".  If it fails, figure out why and send me a
+    patch.  A real build system would probably involve more red tape
+    than all the Nil code.  For that matter, this README is probably
+    longer than the Nil code.  :-)  You'll need LLVM and a C compiler.
 
 Installation:
 
@@ -32,17 +32,18 @@ Installation:
 
 Running:
 
-Type "./nil" and behold the glory.  In v0.0.1 all it will do is echo your input
-lines character by character, quitting when EOF is encountered and dying with
-an error message on an illegal character or I/O error.
+Type "./nil" and behold the glory.  In v0.0.1 all it will do is echo
+your input lines character by character, quitting when EOF is
+encountered and dying with an error message on an illegal character or
+I/O error.
 
 HACKING
 
 While there isn't much there yet, it's on github to be played with.  Note that
-this is *very* unstable development code. :-)  Also note that the code has only
-been built on 32-bit Fedora 11 Linux, though it aspires to be reasonably
-portable when it grows up and LLVM should take care of most machine
-dependencies.
+this is *very* unstable development code. :-)  While portability is a minor
+concern at the moment the code has been built on both 32-bit Fedora 11 and
+64-bit Fedora 12 Linux.  It aspires to be reasonably portable someday when it
+grows up, with LLVM should take care of most machine dependencies.
 
 This will help you know where to look first:
 
@@ -60,23 +61,31 @@ Skel/         Skeleton source .llm, .llh, and test files
 Main Nil implementation files:
 
 nil.llh       Global declarations (types, #defines)
+
 nil.llm       has main(), and often modules not yet broken out into their
               own files.  Also documentation on coding conventions.
 
 System support files:
 
-c_defs.c      A simple C program that writes things Nil needs to know about
-              the local C implementation (e.g. the types needed to call
-              into libc) into c_defs.llh
+c_defs.c      A simple C program that writes things Nil needs to know
+              about the local C implementation (e.g. the types needed
+              to call into libc) into c_defs.llh
 
 system_c.c    Some C functions callable from LLVM to obtain things not
               available through c_defs.llh (e.g. the stdio FILE pointers
               for stdin and stdout).
 
-system_ll.llm Misc. utility functions, such as an LLVM assert().
+system_ll.llm Misc. utility functions, such as an LLVM assert().  Nothing
+              in system_ll.llm or system.llh should depend on the actual
+              nil implementation, which means it should all use the C
+              calling convention and the C/libc types.
 
 system.llh    #includes c_defs.llh, declares prototypes of useful libc
               functions (so LLVM knows their signatures and can typecheck
               calls) plus the prototypes for the functions in system_c.c
               and system_ll.llm
+
+lex.llh/m     The beginnings of the nil lexer.  This should only depend
+              on c_defs and system and nil.llh--nothing here should use
+              the expression code.
 

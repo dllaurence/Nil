@@ -8,26 +8,39 @@
 ;
 ;**********************************************************************
 
+#include "system.llh"
 #include "lex.llh"
 
 ;**********************************************************************
-; NextChar (private)
-;
-; Simplifies the lexer by letting us filter out illegal characters.
-; Prints an error message if there is a bad character, and returns
-; LEX_FINISHED on either a bad character or EOF.
+; Private declarations
 ;
 ;**********************************************************************
 
-@badCharArray = internal constant [24 x %c_char] c"Bad character on input.\00"
-@ioErrorArray = internal constant [20 x %c_char] c"I/O error on input.\00"
+    declare NILCC %c_int @GetValidChar()
+
+;**********************************************************************
+; GetValidChar (private)
+;
+; Simplifies the lexer by letting us filter out illegal characters.
+; Returns the ASCII value for legal character, LEX_EOF for end-of-file,
+; LEX_IOERROR on a (surprise!) I/O error, or prints an error message
+; and returns LEX_BADCHAR for bad characters.
+;
+;**********************************************************************
+
+#define BADCHARARRAY_LEN 24
+@badCharArray = internal constant [BADCHARARRAY_LEN x %c_char]
+                                  c"Bad character on input.\00"
+
+#define IOERRORARRAY_LEN 20
+@ioErrorArray = internal constant [IOERRORARRAY_LEN x %c_char] c"I/O error on input.\00"
 
 define NILCC %c_int
-@NextChar()
+@GetValidChar()
 {
     %nextChar = call ccc %c_int @getchar_checked()
     switch %c_int %nextChar, label %ValidIO [
-        %c_int IO_EOF,      label %Finished
+        %c_int IO_EOF,      label %OnEOF
         %c_int IO_ERROR,    label %OnIOError
 
         %c_int ASCII_TAB,      label %AcceptNextChar
@@ -53,21 +66,21 @@ AcceptNextChar:
 ; This is the only exceptional return value, as we've already
 ; taken care of elementary error reporting
 
-Finished:
-    ret %c_int LEX_FINISHED
+OnEOF:
+    ret %c_int LEX_EOF
 
 ; Handle Exceptional Conditions
 
 BadChar:
-    %badCharMsg = getelementptr [24 x %c_char]*
+    %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
                         @badCharArray, i64 0, i64 0
     call ccc %c_int @puts(%c_char* %badCharMsg)
-    br label %Finished
+    ret %c_int LEX_BADCHAR
 
 OnIOError:
-    %ioErrorMsg = getelementptr [20 x %c_char]*
+    %ioErrorMsg = getelementptr [IOERRORARRAY_LEN x %c_char]*
                         @ioErrorArray, i64 0, i64 0
     call ccc %c_int @puts(%c_char* %ioErrorMsg)
-    br label %Finished
+    ret %c_int LEX_IOERROR
 }
 
