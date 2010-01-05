@@ -47,41 +47,101 @@
 #include "lex.llh"
 
 ;**********************************************************************
-; main
+; Some interpreter messages
 ;
 ;**********************************************************************
+
+#define WELCOMEARRAY_LEN 62
+@welcomeArray = internal constant [WELCOMEARRAY_LEN x %c_char]
+    c"Welcome to nil v0.0.2.  Press <ctrl>-D at the prompt to exit.\00"
 
 #define PROMPTARRAY_LEN 6
 @promptArray = internal constant [PROMPTARRAY_LEN x %c_char] c"nil> \00"
 
+#define BADCHARARRAY_LEN 16
+@badCharArray = internal constant [BADCHARARRAY_LEN x %c_char]
+    c"#bad character#\00"
+
+#define IOERRORARRAY_LEN 20
+@ioErrorArray = internal constant [IOERRORARRAY_LEN x %c_char]
+    c"I/O error on input.\00"
+
+;**********************************************************************
+; main
+;
+;**********************************************************************
+
 define %c_int
 @main(%c_int %argc, %c_char **%argv)
 {
+    ; This flag is necessary to avoid double-spacing the prompt when
+    ; nothing was entered.
+    %hadInputPtr = alloca i1
+    store i1 0, i1* %hadInputPtr
+
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+    %welcomeString = getelementptr [WELCOMEARRAY_LEN x %c_char]*
+                                           @welcomeArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %welcomeString)
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
     br label %PrintPrompt
 
 PrintPrompt:
-    %promptString = getelementptr [PROMPTARRAY_LEN x %c_char]* @promptArray, i64 0, i64 0
+    %promptString = getelementptr [PROMPTARRAY_LEN x %c_char]*
+                                           @promptArray, i64 0, i64 0
     call ccc %c_int @putstring(%c_char* %promptString)
     br label %ReadChar
 
 ReadChar:
-    %char = call NILCC %c_int @GetValidChar()
+    %char = call NILCC %c_int @NextLexeme()
 
     switch %c_int %char, label %PrintChar [
 
         %c_int LEX_EOF,      label %Exit
-        %c_int LEX_IOERROR,  label %Exit
-        %c_int LEX_BADCHAR,  label %ReadChar
+        %c_int LEX_IOERROR,  label %ExitIOError
+        %c_int LEX_BADCHAR,  label %WarnBadChar
+        %c_int LEX_SYMBOL,   label %PrintSymbol
 
         %c_int ASCII_NEWLINE,  label %NewLine
     ]
 
 PrintChar:
     call ccc %c_int @putchar(%c_int %char)
+    call ccc %c_int @putchar(%c_int ASCII_SPACE)
+    store i1 1, i1* %hadInputPtr
+    br label %ReadChar
+
+ExitIOError:
+    %ioErrorMsg = getelementptr [IOERRORARRAY_LEN x %c_char]*
+                        @ioErrorArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %ioErrorMsg)
+    store i1 1, i1* %hadInputPtr
+    br label %Exit
+
+WarnBadChar:
+    %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
+                        @badCharArray, i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %badCharMsg)
+    call ccc %c_int @putchar(%c_int ASCII_SPACE)
+    store i1 1, i1* %hadInputPtr
+    br label %ReadChar
+
+PrintSymbol:
+    %lexeme = call NILCC %c_char* @GetLexemePtr()
+    call ccc %c_int @putstring(%c_char* %lexeme)
+    call ccc %c_int @putchar(%c_int ASCII_SPACE)
+    store i1 1, i1* %hadInputPtr
     br label %ReadChar
 
 NewLine:
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+    %hadInput = load i1* %hadInputPtr
+    br i1 %hadInput, label %IfHadInput, label %EndIfHadInput
+    IfHadInput:
+        call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+        br label %EndIfHadInput
+    EndIfHadInput:
+
+    store i1 0, i1* %hadInputPtr
     br label %PrintPrompt
 
 Exit:

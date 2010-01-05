@@ -78,10 +78,12 @@
 ; stdio
 
     ; libc
-    declare ccc %c_int @puts(%c_char *)                     ; int puts(char*)
-    declare ccc %c_int @fputs(%c_char*, i8*)
-    declare ccc %c_int @getchar()                      ; int getchar()
-    declare ccc %c_int @putchar(%c_int)                   ; int putchar(int)
+    declare ccc %c_int @fputs(%c_char*, %c_char*)
+    declare ccc %c_int @putchar(%c_int)
+    declare ccc %c_int @puts(%c_char *)
+
+    declare ccc %c_int @getchar()
+    declare ccc %c_int @ungetc(%c_int, %c_char*)
 
     declare ccc %c_int @feof(%c_char*)
     declare ccc %c_int @ferror(%c_char*)
@@ -92,12 +94,15 @@
     declare ccc %c_char* @getstdfileptr(%c_int)
 
     ; Additional I/O code in system_ll.llm
-    declare ccc %c_int @putstring(%c_char*) ; like puts(), but without the extra newline
+    declare ccc %c_int @putstring(%c_char*) ; puts(), sans newline
     declare ccc void @puti(%c_int)
 
+    ; We define our own codes, whether they match or not, to decouple our
+    ; code from libc.
     #define IO_EOF      -1
     #define IO_ERROR    -10
 
+    declare ccc void   @ungetchar_asserted(%c_int %char)
     declare ccc %c_int @getchar_checked()
 
 ; Malloc & friends

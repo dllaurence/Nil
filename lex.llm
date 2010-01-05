@@ -12,11 +12,231 @@
 #include "lex.llh"
 
 ;**********************************************************************
-; Private declarations
+; Private lexer declarations
 ;
 ;**********************************************************************
 
-    declare NILCC %c_int @GetValidChar()
+
+    declare NILCC void     @ClearLexemeBuffer()
+    declare NILCC %c_char* @GetLexemePtr()
+    declare NILCC void     @AppendLexemeChar(%c_int %char_int)
+    declare NILCC %c_int   @GetValidChar()
+
+;**********************************************************************
+; NextLexeme (public)
+;
+; The back end of the nil tokenizer.  A very simple state machine
+; implemented directly in code, which is an instructive example of a
+; complex function written in IR.  As the code is already complex enough
+; and verges on being "write only" code, NextLexeme only identifies
+; significant character sequences (lexemes) in the source, while
+; NextToken does the actual construction of the corresponding token
+; required by the parser.
+;
+; There is a great deal of redundancy in the code, but those are not to
+; be simplified away until the lexer is thoroughly debugged.
+;
+; Yes, it's hard to read.  It was hard to write, and why should you have
+; it any easier? :-)
+;
+;**********************************************************************
+
+define NILCC %c_int
+@NextLexeme()
+{
+    ; Reminder: for optimization purposes all alloca calls should happen
+    ; in the first block
+
+    ; FIXME: The state variable should be a label address computed with
+    ; blockaddress() when blockaddress() and indirectbr are supported
+    ; (apparently in LLVM 2.7).
+    %pState = alloca %Word
+    store %Word 0, %Word* %pState
+
+    ; Start at the beginning of the buffer
+    call NILCC void @ClearLexemeBuffer()
+
+    br label %Loop
+
+Loop:
+
+            %currentChar = call NILCC %c_int @GetValidChar()
+
+            %state = load %Word* %pState
+            switch %Word %state, label %Next_Error [
+
+                %Word 0, label %Start
+                %Word 1, label %Token
+            ]
+
+        Next_Error:
+            cant_happen()
+            br label %Next_Error ; This will get some attention if somehow
+                                 ; we screw up the call to abort()
+
+    Start:
+            ; Throw away whitespace
+            switch %c_int %currentChar, label %Start_TokenChar [
+
+                %c_int LEX_EOF,        label %AcceptNonprinting
+                %c_int LEX_IOERROR,    label %AcceptNonprinting
+                %c_int LEX_BADCHAR,    label %AcceptNonprinting
+
+                %c_int ASCII_TAB,      label %Loop
+                %c_int ASCII_NEWLINE,  label %AcceptChar
+                %c_int ASCII_VTAB,     label %Loop
+                %c_int ASCII_FORMFEED, label %Loop
+                %c_int ASCII_CR,       label %Loop
+                %c_int ASCII_SPACE,    label %Loop
+                %c_int ASCII_DEL,      label %Loop
+
+                %c_int ASCII_LPAREN,   label %AcceptChar
+                %c_int ASCII_RPAREN,   label %AcceptChar
+            ]
+
+        Start_TokenChar:
+            ; Change to the Token state
+            store %Word 1, %Word* %pState
+            br label %Token
+
+    Token:
+
+            switch %c_int %currentChar, label %Token_AppendChar [
+
+                %c_int LEX_EOF,        label %AcceptSymbol
+                %c_int LEX_IOERROR,    label %AcceptSymbol
+                %c_int LEX_BADCHAR,    label %AcceptSymbol
+
+                %c_int ASCII_TAB,      label %AcceptSymbol
+                %c_int ASCII_NEWLINE,  label %AcceptSymbol
+                %c_int ASCII_VTAB,     label %AcceptSymbol
+                %c_int ASCII_FORMFEED, label %AcceptSymbol
+                %c_int ASCII_CR,       label %AcceptSymbol
+                %c_int ASCII_SPACE,    label %AcceptSymbol
+                %c_int ASCII_DEL,      label %AcceptSymbol
+
+                %c_int ASCII_LPAREN,   label %AcceptSymbol
+                %c_int ASCII_RPAREN,   label %AcceptSymbol
+            ]
+
+        Token_AppendChar:
+            call NILCC void @AppendLexemeChar(%c_int %currentChar)
+            br label %Loop
+
+AcceptNonprinting: ; Only separate from AcceptChar for debugging purposes
+    ret %c_int %currentChar
+
+AcceptChar:
+    ret %c_int %currentChar
+
+AcceptSymbol:
+    ; Push back the non-Symbol character we found for the next call
+    call ccc void @ungetchar_asserted(%c_int %currentChar)
+
+    ; Add a null-terminator for the convenience of NextToken().
+    call NILCC void @AppendLexemeChar(%c_int 0)
+
+    ret %c_int LEX_SYMBOL
+}
+
+;**********************************************************************
+; LexemeBuffer
+;
+; A small module that makes it easy for the lexer to accumulate up a
+; token one character at a time, but didn't seem worth breaking out
+; into its own file.
+;
+; FIXME: With some macro hackery, we could use this to define a more
+; general buffer "class" and re-use it to get rid of stdio and call the
+; low-level I/O functions directly.
+;
+;**********************************************************************
+
+; Should be large enough
+#define LEXEMEBUFFER_SIZE 1024
+@lexemeBuffer = internal global [LEXEMEBUFFER_SIZE x %c_char] zeroinitializer
+
+@pBufferIndex = internal global %c_size_t 0
+
+;**********************************************************************
+; ClearLexemeBuffer
+;
+;**********************************************************************
+
+define NILCC void
+@ClearLexemeBuffer()
+{
+    store %c_size_t 0, %c_size_t* @pBufferIndex
+
+    ret void
+}
+
+;**********************************************************************
+; GetLexemePtr
+;
+; Warning--the Lexeme won't be null-terminated unless null is appended
+; to the buffer explicitly.
+;
+;**********************************************************************
+
+define NILCC %c_char*
+@GetLexemePtr()
+{
+
+    %pLexeme = getelementptr [LEXEMEBUFFER_SIZE x %c_char]* @lexemeBuffer,
+                                                            i64 0, i64 0
+
+    ret %c_char* %pLexeme
+}
+
+;**********************************************************************
+; AppendLexemeChar
+;
+;**********************************************************************
+
+define NILCC void
+@AppendLexemeChar(%c_int %char_int)
+{
+    ; Sanity test input to ensure it is within 0-255
+    %nonNegative = icmp sge %c_int %char_int, 0
+    assert(%nonNegative)
+    %eightBits = icmp slt %c_int %char_int, 256
+    assert(%eightBits)
+
+    ; Obtain c_char value
+    %char = trunc %c_int %char_int to %c_char
+    ; Obtain pointer to the next position
+    %bufferIndex = load %c_size_t* @pBufferIndex
+    ; FIXME: would like this to use the "inbounds" keyword
+    %bufferPos = getelementptr [LEXEMEBUFFER_SIZE x %c_char]* @lexemeBuffer,
+                                        i64 0,
+                                        %c_size_t %bufferIndex
+
+    ; Write the char to the buffer
+    store %c_char %char, %c_char* %bufferPos
+
+    ; Increment the index
+    ; To prevent buffer overflow (because security is so important in
+    ; private experimental code ;-) we simply truncate Lexemes to the
+    ; buffer size.  If you require Lexemes longer than 1023 characters,
+    ; get help.
+    %maxIndex = sub %c_size_t LEXEMEBUFFER_SIZE, 1 ; really a constant
+    %roomLeft = icmp ult %c_size_t %bufferIndex, %maxIndex
+    br i1 %roomLeft, label %Increment, label %Done
+
+Increment:
+    %nextIndex = add %c_size_t %bufferIndex, 1
+    store %c_size_t %nextIndex, %c_size_t* @pBufferIndex
+    br label %Done
+
+Done:
+    ret void
+}
+
+;**********************************************************************
+; Lexer-specific I/O
+;
+;**********************************************************************
 
 ;**********************************************************************
 ; GetValidChar (private)
@@ -27,13 +247,6 @@
 ; and returns LEX_BADCHAR for bad characters.
 ;
 ;**********************************************************************
-
-#define BADCHARARRAY_LEN 24
-@badCharArray = internal constant [BADCHARARRAY_LEN x %c_char]
-                                  c"Bad character on input.\00"
-
-#define IOERRORARRAY_LEN 20
-@ioErrorArray = internal constant [IOERRORARRAY_LEN x %c_char] c"I/O error on input.\00"
 
 define NILCC %c_int
 @GetValidChar()
@@ -72,15 +285,9 @@ OnEOF:
 ; Handle Exceptional Conditions
 
 BadChar:
-    %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
-                        @badCharArray, i64 0, i64 0
-    call ccc %c_int @puts(%c_char* %badCharMsg)
     ret %c_int LEX_BADCHAR
 
 OnIOError:
-    %ioErrorMsg = getelementptr [IOERRORARRAY_LEN x %c_char]*
-                        @ioErrorArray, i64 0, i64 0
-    call ccc %c_int @puts(%c_char* %ioErrorMsg)
     ret %c_int LEX_IOERROR
 }
 

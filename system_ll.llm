@@ -86,6 +86,9 @@ define ccc void
 ;**********************************************************************
 ; putstring
 ;
+; Like puts(), but without the extra newline.  Basically eliminates the
+; wierd asymmetry between puts and fputs.
+;
 ;**********************************************************************
 
 define ccc %c_int
@@ -95,6 +98,25 @@ define ccc %c_int
     %retVal = call ccc %c_int @fputs(%c_char* %string, %c_char* %pFile)
 
     ret %c_int %retVal
+}
+
+;**********************************************************************
+; ungetchar_asserted
+;
+; Simplifies the use of C ungetc() by automatically using stdin (thus
+; the "char") and by asserting that the pushback worked.  It is
+; "guaranteed" to work at least once, and that's all the lexer needs.
+;
+;**********************************************************************
+
+define ccc void
+@ungetchar_asserted(%c_int %char)
+{
+    %stdinPtr = call ccc %c_char* @getstdfileptr(%c_int C_STDIN_FD)
+    %code = call ccc %c_int @ungetc(%c_int %char, %c_char* %stdinPtr)
+    %success = icmp ne %c_int %code, C_EOF
+    assert(%success)
+    ret void
 }
 
 ;**********************************************************************

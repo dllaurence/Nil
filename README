@@ -4,6 +4,10 @@ README
 
 ChangeLog:
 
+    v0.0.2 * Recognizes and prints the tokens entered on the input line.
+           * Added a welcome message and user-friendlified the input
+             loop behavior.
+
     v0.0.1 * Echoes input lines and detects EOF, illegal characters,
              and I/O errors.
 
@@ -16,7 +20,7 @@ a word of it).  The code is hosted at http://github.com/dllaurence/Nil.
 For the time being the code is licensed under the LGPL3, just so I'm
 not guilty of releasing code into the wild with ambiguous terms.  But
 frankly, if this is a concern for you, get help for your compulsion to
-treat an experimental project as more than it is. :-)
+treat dangerously experimental code as more than it is. :-)
 
 Building:
 
@@ -32,18 +36,27 @@ Installation:
 
 Running:
 
-Type "./nil" and behold the glory.  In v0.0.1 all it will do is echo
-your input lines character by character, quitting when EOF is
-encountered and dying with an error message on an illegal character or
-I/O error.
+Type "./nil" in the build directory and behold the glory.
+
+In v0.0.2 Nil recognizes and lists the tokens entered on the input line
+separated with spaces.  The interaction loop quits when EOF or an I/O error is
+encountered, and warns about bad characters on the input.
+
+You can always tell exactly what nil thinks is a token because tokens are
+always separated by a single space and tokens can never contain spaces; for
+example, '(' and ')' are treated as single tokens in their own right separate
+from symbol strings.  At this point it accepts more characters as symbol
+characters than even lisp should, but that's not worth fixing right now.
 
 HACKING
 
 While there isn't much there yet, it's on github to be played with.  Note that
 this is *very* unstable development code. :-)  While portability is a minor
-concern at the moment the code has been built on both 32-bit Fedora 11 and
-64-bit Fedora 12 Linux.  It aspires to be reasonably portable someday when it
-grows up, with LLVM should take care of most machine dependencies.
+concern at the moment the code has only been built with LLVM 2.6 on AMD64
+Fedora 12 Linux and (if I felt like it) LLVM 2.5 on x86 Fedora 11.  However,
+LLVm should take care of most machine dependencies and it aspires to be
+reasonably portable someday when it grows up, so report gross incivilities in
+the github issue tracker.
 
 This will help you know where to look first:
 
@@ -75,17 +88,19 @@ system_c.c    Some C functions callable from LLVM to obtain things not
               available through c_defs.llh (e.g. the stdio FILE pointers
               for stdin and stdout).
 
-system_ll.llm Misc. utility functions, such as an LLVM assert().  Nothing
-              in system_ll.llm or system.llh should depend on the actual
-              nil implementation, which means it should all use the C
-              calling convention and the C/libc types.
+system_ll.llm Misc. utility functions, such as an LLVM assert() and nicer
+              wrappers for particularly annoying libc functions.  Nothing
+              in system_ll.llm, system_c.c, or system.llh should depend
+              on the actual nil implementation, which means the code there
+              should use the C calling convention and the C/libc types.
 
 system.llh    #includes c_defs.llh, declares prototypes of useful libc
               functions (so LLVM knows their signatures and can typecheck
               calls) plus the prototypes for the functions in system_c.c
-              and system_ll.llm
+              and system_ll.llm, defines ASCII convenience constants, etc.
 
-lex.llh/m     The beginnings of the nil lexer.  This should only depend
-              on c_defs and system and nil.llh--nothing here should use
-              the expression code.
+lex.llh/m     The nil lexer.  This should only depend on c_defs, system,
+              and nil.llh--nothing here should use the expression code.
+              That means the Lexemes get turned into Nil expressions
+              elsewhere.
 
