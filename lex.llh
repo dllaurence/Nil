@@ -1,0 +1,21 @@
+#ifndef LEX_LLH
+#define LEX_LLH
+
+;**********************************************************************
+; lex.llh
+;
+; Public declarations for the lexer.
+;
+; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "nil.llh"
+#include "system.llh"
+
+    #define LEX_FINISHED IO_EOF
+
+    declare NILCC %c_int @NextChar()
+
+#endif

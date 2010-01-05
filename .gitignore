@@ -1,0 +1,11 @@
+# Ignore editor backup files
+*~
+# Ignore object files
+*.o
+# Ignore preprocessed LLVM files
+*.ll
+# Ignore the generated c_defs header
+c_defs.llh
+# Ignore the project executables
+nil
+c_defs

@@ -1,0 +1,73 @@
+;**********************************************************************
+; lex.llm
+;
+; Lexer implementation.
+;
+; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "lex.llh"
+
+;**********************************************************************
+; NextChar (private)
+;
+; Simplifies the lexer by letting us filter out illegal characters.
+; Prints an error message if there is a bad character, and returns
+; LEX_FINISHED on either a bad character or EOF.
+;
+;**********************************************************************
+
+@badCharArray = internal constant [24 x %c_char] c"Bad character on input.\00"
+@ioErrorArray = internal constant [20 x %c_char] c"I/O error on input.\00"
+
+define NILCC %c_int
+@NextChar()
+{
+    %nextChar = call ccc %c_int @getchar_checked()
+    switch %c_int %nextChar, label %ValidIO [
+        %c_int IO_EOF,      label %Finished
+        %c_int IO_ERROR,    label %OnIOError
+
+        %c_int ASCII_TAB,      label %AcceptNextChar
+        %c_int ASCII_NEWLINE,  label %AcceptNextChar
+        %c_int ASCII_VTAB,     label %AcceptNextChar
+        %c_int ASCII_FORMFEED, label %AcceptNextChar
+        %c_int ASCII_CR,       label %AcceptNextChar
+    ]
+
+ValidIO:
+    %smallEnough = icmp slt %c_int %nextChar, ASCII_DEL
+    br i1 %smallEnough, label %SmallEnough,
+                        label %BadChar
+
+SmallEnough:
+    %printing = icmp sge %c_int %nextChar, ASCII_SPACE
+    br i1 %printing, label %AcceptNextChar,
+                     label %BadChar
+
+AcceptNextChar:
+    ret %c_int %nextChar
+
+; This is the only exceptional return value, as we've already
+; taken care of elementary error reporting
+
+Finished:
+    ret %c_int LEX_FINISHED
+
+; Handle Exceptional Conditions
+
+BadChar:
+    %badCharMsg = getelementptr [24 x %c_char]*
+                        @badCharArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %badCharMsg)
+    br label %Finished
+
+OnIOError:
+    %ioErrorMsg = getelementptr [20 x %c_char]*
+                        @ioErrorArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %ioErrorMsg)
+    br label %Finished
+}
+

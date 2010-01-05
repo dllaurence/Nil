@@ -14,9 +14,13 @@
 
 all : nil
 
-nil : nil.o system_c.o system_ll.o
+nil : nil.o system_c.o system_ll.o lex.o
 
-nil.ll : system.llh c_defs.llh nil.llh
+nil.ll : system.llh c_defs.llh nil.llh lex.llh
+
+lex.ll : system.llh c_defs.llh nil.llh lex.llh
+
+system_ll.ll : system.llh c_defs.llh
 
 c_defs.llh : c_defs
 	./c_defs > c_defs.llh

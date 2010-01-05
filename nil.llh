@@ -11,7 +11,7 @@
 ;
 ;**********************************************************************
 
-#include "system.llh"
+#include "c_defs.llh"
 
 ;**********************************************************************
 ; Global definitions
@@ -21,10 +21,13 @@
 ; Calling convention for all internal functions
 #define NILCC fastcc
 
-; A small attempt to be machine word independent.  Generally
-%Word = type %c_int
-#define WORD_T_SIZEOF C_INT_SIZEOF
-#define WORD_T_BITSOF C_INT_BITSOF
+; A small attempt to be machine word independent.  Here I assume that
+; on modern machines a word is exactly the size of a generic pointer;
+; this isn't true on ancient architectures, but who is going to run
+; this code on anything that old?
+%Word = type %c_intptr_t
+#define WORD_T_SIZEOF C_INTPTR_T_SIZEOF
+#define WORD_T_BITSOF C_INTPTR_T_BITSOF
 
 #endif
 
