@@ -44,6 +44,9 @@
     #define ASCII_C         67
     #define ASCII_D         68
 
+    #define ASCII_N         78
+    #define ASCII_O         79
+
     ; Miniscules
     #define ASCII_a         97
 
@@ -111,7 +114,11 @@
 
 ; Strings
 
-    declare ccc %c_char @strndup(%c_char*, %c_size_t %len)
+    declare ccc %c_char* @strdup(%c_char*)
+    declare ccc %c_char* @strndup(%c_char*, %c_size_t %len)
+    declare ccc %c_int @strcmp(%c_char*, %c_char*)
+
+    declare ccc %c_size_t @strlen(%c_char* %string)
 
 ; Useful Macros
 

@@ -52,11 +52,11 @@ HACKING
 
 While there isn't much there yet, it's on github to be played with.  Note that
 this is *very* unstable development code. :-)  While portability is a minor
-concern at the moment the code has only been built with LLVM 2.6 on AMD64
-Fedora 12 Linux and (if I felt like it) LLVM 2.5 on x86 Fedora 11.  However,
-LLVm should take care of most machine dependencies and it aspires to be
-reasonably portable someday when it grows up, so report gross incivilities in
-the github issue tracker.
+concern at the moment the code has been built (if I felt like it) with LLVM 2.5
+on x86 Fedora 11 as well as the with LLVM 2.6 on AMD64 Fedora 12 Linux.
+However, LLVM should take care of most machine dependencies and it aspires to
+be reasonably portable someday when it grows up, so report gross incivilities
+in the github issue tracker.
 
 This will help you know where to look first:
 
@@ -76,7 +76,7 @@ Main Nil implementation files:
 nil.llh       Global declarations (types, #defines)
 
 nil.llm       has main(), and often modules not yet broken out into their
-              own files.  Also documentation on coding conventions.
+              own files.  Also documentation you will want to read.
 
 System support files:
 
