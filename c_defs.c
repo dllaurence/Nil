@@ -3,7 +3,7 @@
  *
  * Compute C language-specific constructs.
  *
-; Copyright 2009 by Dustin Laurence.  Distributed under the terms of
+; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
 ;
  **********************************************************************/

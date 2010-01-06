@@ -1,4 +1,10 @@
-# Makefile for nil
+#**********************************************************************
+# Nil Makefile
+#
+# Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
+# the LGPLv3.
+#
+#**********************************************************************
 
 %.s : %.bc
 	llc -f $<
