@@ -45,242 +45,7 @@
 #include "nil.llh"
 #include "system.llh"
 #include "lex.llh"
-
-;**********************************************************************
-; Strings
-;
-; (Placed here until I decide the best place to factor it out.)
-;
-; A simple little module that ensures that every string *value* is
-; stored in a single unique location, vital for Lisp to work with any
-; kind of efficiency at all (among other things, this means we can
-; test for symbol equality with a simple pointer compare).  A simple
-; linked list is more than sufficient for now.
-;
-; Note that as far as this module is concerned "" is a perfectly valid
-; symbol. :-)
-;
-;**********************************************************************
-
-%StringList = type {%c_char*, %StringList*}
-
-@ppListHead = internal global %StringList* null
-
-;**********************************************************************
-; UniqueString
-;
-; Returns a pointer to a unique string with the same contents as the
-; given string, allocating if necessary.  Note that the caller can't
-; free() the string as we maintain an internal pointer to it.  That's
-; what garbage collection is for.
-;
-;**********************************************************************
-
-define NILCC %c_char*
-@UniqueString(%c_char* %string)
-{
-    ; Is there already such a string in the list?
-    %existingString = call NILCC %c_char* @FindString(%c_char* %string)
-
-    #ifndef NDEBUG
-    ; For paranoia's sake, in debugging mode we'll do the same search
-    ; all over again with the recursive implementation and assert that
-    ; precisely the same pointer is obtained.
-    %pListHead = load %StringList** @ppListHead
-    %alternateString = call NILCC %c_char* @FindStringR(%StringList* %pListHead,
-                                                        %c_char* %string)
-    %equal = icmp eq %c_char* %existingString, %alternateString
-    assert(%equal)
-    #endif
-
-    %exists = icmp ne %c_char* %existingString, null
-    br i1 %exists, label %ReturnOldString, label %GetNewString
-
-ReturnOldString:
-; These blocks are very useful for verifying that the code is re-using
-; old strings as it should, so I'll leave them here for the time being.
-; It prepends a (O) or an (N) to symbols as they are echoed back
-; depending on whether it returned an (O)ld or (N)ew object.
-#if 0
-call ccc %c_int @putchar(%c_int ASCII_LPAREN)
-call ccc %c_int @putchar(%c_int ASCII_O)
-call ccc %c_int @putchar(%c_int ASCII_RPAREN)
-#endif
-    ; If so, return it.
-    ret %c_char* %existingString
-
-GetNewString:
-#if 0
-call ccc %c_int @putchar(%c_int ASCII_LPAREN)
-call ccc %c_int @putchar(%c_int ASCII_N)
-call ccc %c_int @putchar(%c_int ASCII_RPAREN)
-#endif
-    ; If not, allocate a new string with that value...
-    %newString = call ccc %c_char* @strdup(%c_char* %string)
-    #ifndef NDEBUG
-    ; Did we get it?
-    %gotString = icmp ne %c_char* %newString, null
-    assert(%gotString)
-    ; Also check to see that the alignment is OK, because we're paranoid
-    %addr = ptrtoint %c_char* %newString to %Word
-    %tag = and %Word %addr, 7 ; 2^3-1
-    %aligned = icmp eq %Word %tag, 0
-    assert(%aligned)
-    #endif
-
-    ; ...add it to the list...
-    call NILCC void @PushString(%c_char* %newString)
-
-    ; ...and return it.
-    ret %c_char* %newString
-}
-
-;**********************************************************************
-; PushString
-;
-; Adds the given string to the head of the list without checking to
-; see if it is already present.
-;
-;**********************************************************************
-
-define NILCC void
-@PushString(%c_char* %string)
-{
-    ; Compute sizeof(StringList)
-    %sizeAddr = getelementptr %StringList* null, i64 1
-    %size = ptrtoint %StringList* %sizeAddr to %c_size_t
-
-    ; Get a new StringList element
-    %newMem = call ccc i8* @malloc(%c_size_t %size)
-    %gotMem = icmp ne i8* %newMem, null
-    assert(%gotMem)
-    %newElement = bitcast i8* %newMem to %StringList*
-
-    ; Set the element to point to that string
-    %stringField = getelementptr %StringList* %newElement, i32 0, i32 0
-    store %c_char* %string, %c_char** %stringField
-
-    ; Point its next field at the current head
-    %nextField = getelementptr %StringList* %newElement, i32 0, i32 1
-    %oldHead = load %StringList** @ppListHead
-    store %StringList* %oldHead, %StringList** %nextField
-
-    ; Make it the new head
-    store %StringList* %newElement, %StringList** @ppListHead
-
-    ret void
-}
-
-;**********************************************************************
-; FindString
-;
-; Returns a pointer to the unique string in the list with the same
-; contents as the given string, if it exists.  Otherwise, return null.
-;
-; Written in imperative style--this is LLVM, not lisp.  However, it
-; might be educational to see it in recursive style, and LLVM claims
-; to be able to optimize tail calls.
-;
-;**********************************************************************
-
-define NILCC %c_char*
-@FindString(%c_char* %searchString)
-{
-    ; Paranoia--disallow calls with null (empty strings are fine)
-    #ifndef NDEBUG
-    %haveInput = icmp ne %c_char* %searchString, null
-    assert(%haveInput)
-    #endif
-
-    ; StringList *pThisElement
-    %ppThisElement = alloca %StringList*
-
-    ; pThisElement = &ListHead
-    %pListHead = load %StringList** @ppListHead
-    store %StringList* %pListHead, %StringList** %ppThisElement
-    br label %Loop
-
-Loop:
-    ; while (pThisElement != null)
-    %pThisElement = load %StringList** %ppThisElement
-    %notNull = icmp ne %StringList* %pThisElement, null
-    br i1 %notNull, label %BeginLoop, label %EndLoop
-
-    BeginLoop:
-        ; if (pThisElement->string == searchString)
-        ; FIXME: should use the LLVM 2.6 inbounds keyword
-        %thisStringPtr = getelementptr %StringList* %pThisElement, i32 0, i32 0
-        %thisString = load %c_char** %thisStringPtr
-        %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
-                                       %c_char* %searchString)
-        %equal = icmp eq %c_int %cmp, 0
-        br i1 %equal, label %BeginIf, label %EndIf
-
-        BeginIf:
-
-            ; return thisElement->string
-            ret %c_char* %thisString
-
-        EndIf:
-        ; thisElement = thisElement->next
-        %nextElementPtr = getelementptr %StringList* %pThisElement, i32 0, i32 1
-        %nextElement = load %StringList** %nextElementPtr
-        store %StringList* %nextElement, %StringList** %ppThisElement
-        br label %Loop
-
-EndLoop:
-    ; We didn't find it, return null
-    ret %c_char* null
-}
-
-;**********************************************************************
-; FindStringR
-;
-; Precisely the same semantics as FindString, but written in recursive
-; style for comparison purposes.  We've helped LLVM compile it to an
-; iterative process by explicitly specifying a tail call.
-;
-;**********************************************************************
-
-define NILCC %c_char*
-@FindStringR(%StringList* %list, %c_char* %searchString)
-{
-    ; Paranoia--disallow calls with null (empty strings are fine)
-    #ifndef NDEBUG
-    %haveInput = icmp ne %c_char* %searchString, null
-    assert(%haveInput)
-    #endif
-
-    %notNull = icmp ne %StringList* %list, null
-    br i1 %notNull, label %NotNull, label %IsNull
-
-IsNull:
-    ; We didn't find it, return null
-    ret %c_char* null
-
-NotNull:
-    ; if (pThisElement->string == searchString)
-    ; FIXME: should use the LLVM 2.6 inbounds keyword
-    %thisStringPtr = getelementptr %StringList* %list, i32 0, i32 0
-    %thisString = load %c_char** %thisStringPtr
-    %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
-                                   %c_char* %searchString)
-    %equal = icmp eq %c_int %cmp, 0
-    br i1 %equal, label %StringsEqual, label %StringsNotEqual
-
-StringsEqual:
-
-    ; return thisElement->string
-    ret %c_char* %thisString
-
-StringsNotEqual:
-    ; thisElement = thisElement->next
-    %nextElementPtr = getelementptr %StringList* %list, i32 0, i32 1
-    %nextElement = load %StringList** %nextElementPtr
-    %answer = tail call NILCC %c_char* @FindStringR(%StringList* %nextElement,
-                                                    %c_char* %searchString)
-    ret %c_char* %answer
-}
+#include "exp.llh"
 
 ;**********************************************************************
 ; NextToken (public)
@@ -292,7 +57,7 @@ StringsNotEqual:
 ;
 ;**********************************************************************
 
-%Token = type {%c_int, %c_char*}
+%Token = type {%c_int, %Exp}
  
 define NILCC void
 @NextToken(%Token* %token)
@@ -301,7 +66,7 @@ define NILCC void
 
     ; Set up both pointers here for convenience
     %typeFieldPtr = getelementptr %Token* %token, i32 0, i32 0
-    %lexemeFieldPtr = getelementptr %Token* %token, i32 0, i32 1
+    %expFieldPtr = getelementptr %Token* %token, i32 0, i32 1
 
     store %c_int %tokenType, %c_int* %typeFieldPtr
 
@@ -323,26 +88,23 @@ CantHappen:
     br label %CantHappen
 
 ReturnCode:
-    store %c_char* null, %c_char** %lexemeFieldPtr
+    store %Exp 0, %Exp* %expFieldPtr
     ret void
 
 ReturnSymbol:
     %lexeme = call NILCC %c_char* @GetLexemePtr()
     #ifndef NDEBUG
+    ; Check to see that the string is at least one character long
+    ; (since the lexer shouldn't ever produce an empty string)
     %len = call ccc %c_size_t @strlen(%c_char* %lexeme)
     %positive = icmp ugt %c_size_t %len, 0
     assert(%positive)
-    ; Buffer size not available to this module to check
     #endif
 
-    ; Allocate a string
-    %string = call NILCC %c_char* @UniqueString(%c_char* %lexeme)
+    ; Get the corresponding nil_symbol
+    %symbol = call NILCC %Exp @NewSymbol(%c_char* %lexeme)
 
-    #ifndef NDEBUG
-    ; Test that a second call obtains the same ptr
-    #endif
-
-    store %c_char* %string, %c_char** %lexemeFieldPtr
+    store %Exp %symbol, %Exp* %expFieldPtr
     ret void
 }
 
@@ -353,7 +115,7 @@ ReturnSymbol:
 
 #define WELCOMEARRAY_LEN 62
 @welcomeArray = internal constant [WELCOMEARRAY_LEN x %c_char]
-    c"Welcome to nil v0.0.2.  Press <ctrl>-D at the prompt to exit.\00"
+    c"Welcome to nil v0.0.3.  Press <ctrl>-D at the prompt to exit.\00"
 
 #define PROMPTARRAY_LEN 6
 @promptArray = internal constant [PROMPTARRAY_LEN x %c_char] c"nil> \00"
@@ -395,7 +157,6 @@ PrintPrompt:
     br label %ReadChar
 
 ReadChar:
-    ;%code = call NILCC %c_int @NextLexeme()
     call NILCC void @NextToken(%Token* %tokenPtr)
     %codePtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
     %code = load %c_int* %codePtr
@@ -432,10 +193,10 @@ WarnBadChar:
     br label %ReadChar
 
 PrintSymbol:
-    ;%lexeme = call NILCC %c_char* @GetLexemePtr()
-    %lexemePtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
-    %lexeme = load %c_char** %lexemePtr
-    call ccc %c_int @putstring(%c_char* %lexeme)
+    %expPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
+    %symbolExp = load %Exp* %expPtr
+    ;call ccc %c_int @putstring(%c_char* %lexeme)
+    call NILCC void @PrintExp(%Exp %symbolExp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
     br label %ReadChar

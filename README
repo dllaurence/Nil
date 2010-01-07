@@ -4,6 +4,10 @@ README
 
 ChangeLog:
 
+    v0.0.3 * Same behavior as v0.0.2, but now the lexer is producing
+             genuine Nil symbols and the read loop is printing them
+             properly.
+
     v0.0.2 * Recognizes and prints the tokens entered on the input line.
            * Added a welcome message and user-friendlified the input
              loop behavior.
@@ -12,10 +16,10 @@ ChangeLog:
              and I/O errors.
 
 Nil is (will be, at this stage) a minimal lisp implemented directly in
-handwritten LLVM Intermediate Representation ("LLVM Assembly").  See
-the discussion at http://stoneknives.posterous.com for excuses as to
-why this is not a deranged act (but note that you don't have to believe
-a word of it).  The code is hosted at http://github.com/dllaurence/Nil.
+handwritten LLVM Intermediate Representation ("LLVM Assembly").  See the
+discussion at http://stoneknives.posterous.com for excuses as to why this is
+not a deranged act (but note that you don't have to believe a word of it).  The
+public repository is at http://github.com/dllaurence/Nil.
 
 For the time being the code is licensed under the LGPL3, just so I'm
 not guilty of releasing code into the wild with ambiguous terms.  But
@@ -38,7 +42,7 @@ Running:
 
 Type "./nil" in the build directory and behold the glory.
 
-In v0.0.2 Nil recognizes and lists the tokens entered on the input line
+In v0.0.3 Nil recognizes and lists the tokens entered on the input line
 separated with spaces.  The interaction loop quits when EOF or an I/O error is
 encountered, and warns about bad characters on the input.
 
@@ -47,6 +51,10 @@ always separated by a single space and tokens can never contain spaces; for
 example, '(' and ')' are treated as single tokens in their own right separate
 from symbol strings.  At this point it accepts more characters as symbol
 characters than even lisp should, but that's not worth fixing right now.
+
+Note that while this is the same user-visible behavior as in v0.0.2, internally
+the tokens are now being handled as true lisp symbols, which is a notable
+advance.
 
 HACKING
 
@@ -73,7 +81,7 @@ Skel/         Skeleton source .llm, .llh, and test files
 
 Main Nil implementation files:
 
-nil.llh       Global declarations (types, #defines)
+nil.llh       Global declarations (types, #defines) for all source files.
 
 nil.llm       has main(), and often modules not yet broken out into their
               own files.  Also documentation you will want to read.
@@ -103,4 +111,7 @@ lex.llh/m     The nil lexer.  This should only depend on c_defs, system,
               and nil.llh--nothing here should use the expression code.
               That means the Lexemes get turned into Nil expressions
               elsewhere.
+
+exp.llh/m     The expression implementation, plus support code such as
+              unique strings.
 

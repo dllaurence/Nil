@@ -1,0 +1,69 @@
+#ifndef EXP_LLH
+#define EXP_LLH
+
+;**********************************************************************
+; exp.llh
+;
+; Public declarations for the Expression module.
+;
+; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "nil.llh"
+
+;FIXME: quite a bit of this header should be private
+
+; Everything in Nil is an expression, implemented as a pointer to an
+; object (of the low-level malloc() sort, not the Smalltalk or even
+; C++ sort).  The pointer is represented as an integer because we will
+; be storing type tags in the low-order bits, and need to know the type
+; before we know how to manipulate the pointer.
+
+; Naming convention note; this isn't nil_exp because I don't think
+; lisp has or needs an explicit name for this type--*EVERYTHING* is this
+; type, always.
+
+    %Exp = type %Word
+
+; Tag field type values.
+
+    ; Conceptual difference in type that LLVM won't enforce
+    %Tag = type %Word
+
+    ; The maximally invasive value for testing purposes
+    #define SYMBOL_TAG 7
+
+    ; Low-level manipulation of the tags embedded in the low-order
+    ; bits.
+    ; FIXME: these trivial functions should *always* be inlined
+    declare NILCC %Tag @GetTag(%Exp %exp)
+    declare NILCC %Exp @ClearTag(%Exp %exp)
+    declare NILCC %Exp @AddTag(%Exp %exp, %Tag %tag)
+    declare NILCC %Exp @SetTag(%Exp %exp, %Tag %tag)
+
+    declare NILCC i1 @Aligned(i8* %ptr)
+
+    declare NILCC %Exp @str2nil_symbol(%c_char* %str)
+    declare NILCC %c_char* @nil_symbol2str(%Exp %exp)
+
+; Symbol
+
+    declare NILCC %Exp @NewSymbol(%c_char* %name)
+
+    ; Expression I/O
+    declare NILCC void @PrintExp(%Exp %exp)
+
+    ; String uniquifying
+
+    %StringList = type {%c_char*, %StringList*}
+
+    declare NILCC %c_char* @UniqueString(%c_char* %string)
+    declare NILCC void     @PushString(%c_char* %string)
+    declare NILCC %c_char* @FindString(%c_char* %searchString)
+    declare NILCC %c_char* @FindStringR(%StringList* %list, 
+                                        %c_char* %searchString)
+
+#endif
+

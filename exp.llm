@@ -1,0 +1,491 @@
+;**********************************************************************
+; exp.llm
+;
+; Expression implementation--the heart of any lisp.
+;
+;
+; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "system.llh"
+#include "nil.llh"
+#include "exp.llh"
+
+;**********************************************************************
+; Tag manipulation functions
+;
+; These functions manipulate the low-order bits as a tag field.  They
+; are implemented this way instead of as a structure with bitfields
+; because these are independent of the actual size of %Word and thus
+; work without modification on any architecture.
+;
+; Of course it is inefficient to pay for function calls, but inlining
+; them would fix that without duplicating source and is thus the Right
+; Thing.
+;
+;**********************************************************************
+
+;**********************************************************************
+; GetTag
+;
+; Returns a small integer whose value is the expression type tag.
+;
+;**********************************************************************
+
+define NILCC %Tag
+@GetTag(%Exp %exp)
+{
+    %tagExp = and %Exp %exp, 7
+    %tag = bitcast %Exp %tagExp to %Tag
+    ret %Tag %tag
+}
+
+;**********************************************************************
+; ClearTag
+;
+; Returns an expression with the same value as %exp (points to the same
+; object or contains the same embedded number), but with the type tag
+; cleared (so, for example, it is a valid pointer again).
+;
+;**********************************************************************
+
+define NILCC %Exp
+@ClearTag(%Exp %exp)
+{
+    ; Size-independent way to express the mask we need
+    %mask = xor %Exp 7, -1 ; %mask = "bitwise not" %Exp
+    %clearedExp = and %Exp %exp, %mask
+
+    #ifndef NDEBUG
+    %tag = call NILCC %Tag @GetTag(%Exp %clearedExp)
+    %isZero = icmp eq %Tag %tag, 0
+    assert(%isZero)
+    #endif
+
+    ret %Exp %clearedExp
+}
+
+;**********************************************************************
+; AddTag
+;
+; Returns an expression with the same value as %exp (points to the same
+; object or contains the same embedded number), but with the type tag
+; set to %tag.
+;
+; The difference betweeen this and SetTag is that this assumes the tag
+; field is already clear, and will produce chaos if it is not.
+; (Precisely, the new tag will be xord with the old one, which is
+; not a behavior anyone should be wanting.)
+;
+;**********************************************************************
+
+define NILCC %Exp
+@AddTag(%Exp %exp, %Tag %tag)
+{
+    #ifndef NDEBUG
+    ; Assert tag <= 7
+    %inBounds = icmp ule %Tag %tag, 7
+    assert(%inBounds)
+    #endif
+
+    %tagExp = bitcast %Tag %tag to %Exp
+    %newExp = xor %Exp %exp, %tagExp
+
+    #ifndef NDEBUG
+    %newTag = call NILCC %Tag @GetTag(%Exp %newExp)
+    %same = icmp eq %Tag %tag, %newTag
+    assert(%same)
+    #endif
+
+    ret %Exp %newExp
+}
+
+;**********************************************************************
+; SetTag
+;
+; Returns an expression with the same value as %exp (points to the same
+; object or contains the same embedded number), but with the type tag
+; set to %tag.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@SetTag(%Exp %exp, %Tag %tag)
+{
+    %clearedExp = call NILCC %Exp @ClearTag(%Exp %exp)
+    %newExp = call NILCC %Exp @AddTag(%Exp %clearedExp, %Tag %tag)
+
+    ret %Exp %newExp
+}
+
+;**********************************************************************
+; Aligned
+;
+; Checks to see that the given pointer is aligned on the boundary
+; we assume (currently 8 bytes, which GNU malloc() seems to enforce)
+;
+;**********************************************************************
+
+define NILCC i1
+@Aligned(i8* %ptr)
+{
+    ; Easily expressed in terms of the tag functions defined above
+    %exp = ptrtoint i8* %ptr to %Exp
+    %tag = call NILCC %Tag @GetTag(%Exp %exp)
+    %isZero = icmp eq %Tag %tag, 0
+
+    ret i1 %isZero
+}
+
+;**********************************************************************
+; str2nil_symbol
+;
+; Converts the char* pointer to an Expression with the correct tag.
+; THIS IS ONLY A CONVERSION FUNCTION--use NewSymbol to get a unique
+; string.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@str2nil_symbol(%c_char* %str)
+{
+    ; FIXME: what if %str is null?  This is almost certainly the wrong
+    ; behavior but what is the correct lisp semantics?
+    ; need to be careful about the precise meaning of nil in lisp.
+    ; For now, assert that it isn't so it can't silently do The Wrong
+    ; Thing
+    %notNull = icmp ne %c_char* %str, null
+    ; calling the raw function because until the semantics are settled
+    ; this should not be permitted no matter what NDEBUG says
+    call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
+
+    #ifndef DEBUG
+    ; Also it obviously must be aligned
+    %voidPtr = bitcast %c_char* %str to i8* ; should never be necessary
+    %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
+    assert(%aligned)
+    #endif
+
+    %untaggedExp = ptrtoint %c_char* %str to %Exp
+    %exp = call NILCC %Exp @AddTag(%Exp %untaggedExp, %Tag SYMBOL_TAG)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; nil_symbol2str
+;
+; Converts a Symbol xpression back to a char*.  IT RETURNS A POINTER
+; TO THE CANONICAL STRING OBJECT, so do *not* modify it!
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %c_char*
+@nil_symbol2str(%Exp %exp)
+{
+    #ifndef DEBUG
+    %tag = call NILCC %Tag @GetTag(%Exp %exp)
+    %isSymbol = icmp eq %Tag %tag, SYMBOL_TAG
+    assert(%isSymbol)
+    #endif
+
+    %untaggedExp = call NILCC %Exp @ClearTag(%Exp %exp)
+    %str = inttoptr %Exp %untaggedExp to %c_char*
+
+    ret %c_char* %str
+}
+
+;**********************************************************************
+; GetSymbol
+;
+; Returns a symbol whose name is the value of the given string.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@NewSymbol(%c_char* %name)
+{
+    #ifndef NDEBUG
+    ; Check to see that the string is at least one character long
+    ; (The empty string is a valid string but *not* a valid symbol
+    ; name!)
+    %len = call ccc %c_size_t @strlen(%c_char* %name)
+    %positive = icmp ugt %c_size_t %len, 0
+    assert(%positive)
+    #endif
+
+    ; Get a pointer to a uniqueified string with the same value
+    %string = call NILCC %c_char* @UniqueString(%c_char* %name)
+
+    %exp = call NILCC %Exp @str2nil_symbol(%c_char* %string)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; PrintExp
+;
+;**********************************************************************
+
+define NILCC void
+@PrintExp(%Exp %exp)
+{
+    %tag = call NILCC %Tag @GetTag(%Exp %exp)
+
+    switch %Tag %tag, label %CantHappen [
+
+        %Tag SYMBOL_TAG, label %Symbol
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+Symbol:
+    %str = call NILCC %c_char* @nil_symbol2str(%Exp %exp)
+    call ccc %c_int @putstring(%c_char* %str)
+    ret void
+}
+
+;**********************************************************************
+; Strings
+;
+; (A small module, placed here until I decide the best place to factor
+; it out.)
+;
+; A simple little module that ensures that every string *value* is
+; stored in a single unique location, vital for Lisp to work with any
+; kind of efficiency at all (among other things, this means we can
+; test for symbol equality with a simple pointer compare).  A simple
+; linked list is more than sufficient for now.
+;
+; Note that as far as this module is concerned "" is a perfectly valid
+; symbol. :-)
+;
+;**********************************************************************
+
+@ppListHead = internal global %StringList* null
+
+;**********************************************************************
+; UniqueString
+;
+; Returns a pointer to a unique string with the same contents as the
+; given string, allocating if necessary.  Note that the caller can't
+; free() the string as we maintain an internal pointer to it.  That's
+; what garbage collection is for.
+;
+;**********************************************************************
+
+define NILCC %c_char*
+@UniqueString(%c_char* %string)
+{
+    ; Is there already such a string in the list?
+    %existingString = call NILCC %c_char* @FindString(%c_char* %string)
+
+    #ifndef NDEBUG
+    ; For paranoia's sake, in debugging mode we'll do the same search
+    ; all over again with the recursive implementation and assert that
+    ; precisely the same pointer is obtained.
+    %pListHead = load %StringList** @ppListHead
+    %alternateString = call NILCC %c_char* @FindStringR(%StringList* %pListHead,
+                                                        %c_char* %string)
+    %equal = icmp eq %c_char* %existingString, %alternateString
+    assert(%equal)
+    #endif
+
+    %exists = icmp ne %c_char* %existingString, null
+    br i1 %exists, label %ReturnOldString, label %GetNewString
+
+ReturnOldString:
+; These blocks are very useful for verifying that the code is re-using
+; old strings as it should, so I'll leave them here for the time being.
+; It prepends a (O) or an (N) to symbols as they are echoed back
+; depending on whether it returned an (O)ld or (N)ew object.
+#if 1
+call ccc %c_int @putchar(%c_int ASCII_LPAREN)
+call ccc %c_int @putchar(%c_int ASCII_O)
+call ccc %c_int @putchar(%c_int ASCII_RPAREN)
+#endif
+    ; If so, return it.
+    ret %c_char* %existingString
+
+GetNewString:
+#if 1
+call ccc %c_int @putchar(%c_int ASCII_LPAREN)
+call ccc %c_int @putchar(%c_int ASCII_N)
+call ccc %c_int @putchar(%c_int ASCII_RPAREN)
+#endif
+    ; If not, allocate a new string with that value...
+    %newString = call ccc %c_char* @strdup(%c_char* %string)
+    #ifndef NDEBUG
+    ; Did we get it?
+    %gotString = icmp ne %c_char* %newString, null
+    assert(%gotString)
+    ; Also check to see that the alignment is OK, because we're paranoid
+    ; FIXME: this code is going to get duplicated in the expression
+    ; module, so this should probably not remain inlined like this
+    %addr = ptrtoint %c_char* %newString to %Word
+    %tag = and %Word %addr, 7 ; 2^3-1
+    %aligned = icmp eq %Word %tag, 0
+    assert(%aligned)
+    #endif
+
+    ; ...add it to the list...
+    call NILCC void @PushString(%c_char* %newString)
+
+    ; ...and return it.
+    ret %c_char* %newString
+}
+
+;**********************************************************************
+; PushString
+;
+; Adds the given string to the head of the list without checking to
+; see if it is already present.
+;
+;**********************************************************************
+
+define NILCC void
+@PushString(%c_char* %string)
+{
+    ; Compute sizeof(StringList)
+    %sizeAddr = getelementptr %StringList* null, i64 1
+    %size = ptrtoint %StringList* %sizeAddr to %c_size_t
+
+    ; Get a new StringList element
+    %newMem = call ccc i8* @malloc(%c_size_t %size)
+    %gotMem = icmp ne i8* %newMem, null
+    assert(%gotMem)
+    %newElement = bitcast i8* %newMem to %StringList*
+
+    ; Set the element to point to that string
+    %stringField = getelementptr %StringList* %newElement, i32 0, i32 0
+    store %c_char* %string, %c_char** %stringField
+
+    ; Point its next field at the current head
+    %nextField = getelementptr %StringList* %newElement, i32 0, i32 1
+    %oldHead = load %StringList** @ppListHead
+    store %StringList* %oldHead, %StringList** %nextField
+
+    ; Make it the new head
+    store %StringList* %newElement, %StringList** @ppListHead
+
+    ret void
+}
+
+;**********************************************************************
+; FindString
+;
+; Returns a pointer to the unique string in the list with the same
+; contents as the given string, if it exists.  Otherwise, return null.
+;
+; Written in imperative style--this is LLVM, not lisp.  However, it
+; might be educational to see it in recursive style, and LLVM claims
+; to be able to optimize tail calls.
+;
+;**********************************************************************
+
+define NILCC %c_char*
+@FindString(%c_char* %searchString)
+{
+    ; Paranoia--disallow calls with null (empty strings are fine)
+    #ifndef NDEBUG
+    %haveInput = icmp ne %c_char* %searchString, null
+    assert(%haveInput)
+    #endif
+
+    ; StringList *pThisElement
+    %ppThisElement = alloca %StringList*
+
+    ; pThisElement = &ListHead
+    %pListHead = load %StringList** @ppListHead
+    store %StringList* %pListHead, %StringList** %ppThisElement
+    br label %Loop
+
+Loop:
+    ; while (pThisElement != null)
+    %pThisElement = load %StringList** %ppThisElement
+    %notNull = icmp ne %StringList* %pThisElement, null
+    br i1 %notNull, label %BeginLoop, label %EndLoop
+
+    BeginLoop:
+        ; if (pThisElement->string == searchString)
+        ; FIXME: should use the LLVM 2.6 inbounds keyword
+        %thisStringPtr = getelementptr %StringList* %pThisElement, i32 0, i32 0
+        %thisString = load %c_char** %thisStringPtr
+        %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
+                                       %c_char* %searchString)
+        %equal = icmp eq %c_int %cmp, 0
+        br i1 %equal, label %BeginIf, label %EndIf
+
+        BeginIf:
+
+            ; return thisElement->string
+            ret %c_char* %thisString
+
+        EndIf:
+        ; thisElement = thisElement->next
+        %nextElementPtr = getelementptr %StringList* %pThisElement, i32 0, i32 1
+        %nextElement = load %StringList** %nextElementPtr
+        store %StringList* %nextElement, %StringList** %ppThisElement
+        br label %Loop
+
+EndLoop:
+    ; We didn't find it, return null
+    ret %c_char* null
+}
+
+;**********************************************************************
+; FindStringR
+;
+; Precisely the same semantics as FindString, but written in recursive
+; style for comparison purposes.  We've helped LLVM compile it to an
+; iterative process by explicitly specifying a tail call.
+;
+;**********************************************************************
+
+define NILCC %c_char*
+@FindStringR(%StringList* %list, %c_char* %searchString)
+{
+    ; Paranoia--disallow calls with null (empty strings are fine)
+    #ifndef NDEBUG
+    %haveInput = icmp ne %c_char* %searchString, null
+    assert(%haveInput)
+    #endif
+
+    %notNull = icmp ne %StringList* %list, null
+    br i1 %notNull, label %NotNull, label %IsNull
+
+IsNull:
+    ; We didn't find it, return null
+    ret %c_char* null
+
+NotNull:
+    ; if (pThisElement->string == searchString)
+    ; FIXME: should use the LLVM 2.6 inbounds keyword
+    %thisStringPtr = getelementptr %StringList* %list, i32 0, i32 0
+    %thisString = load %c_char** %thisStringPtr
+    %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
+                                   %c_char* %searchString)
+    %equal = icmp eq %c_int %cmp, 0
+    br i1 %equal, label %StringsEqual, label %StringsNotEqual
+
+StringsEqual:
+
+    ; return thisElement->string
+    ret %c_char* %thisString
+
+StringsNotEqual:
+    ; thisElement = thisElement->next
+    %nextElementPtr = getelementptr %StringList* %list, i32 0, i32 1
+    %nextElement = load %StringList** %nextElementPtr
+    %answer = tail call NILCC %c_char* @FindStringR(%StringList* %nextElement,
+                                                    %c_char* %searchString)
+    ret %c_char* %answer
+}
