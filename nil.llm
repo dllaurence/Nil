@@ -52,8 +52,7 @@
 ;
 ; The front end of the nil tokenizer.  Constructs the tokens required
 ; by the parser from the lexemes identified by NextLexeme().  Part of
-; the expression module because when complete it will know about
-; expression types.
+; the expression module because it knows about expression types.
 ;
 ;**********************************************************************
 
@@ -115,10 +114,13 @@ ReturnSymbol:
 
 #define WELCOMEARRAY_LEN 62
 @welcomeArray = internal constant [WELCOMEARRAY_LEN x %c_char]
-    c"Welcome to nil v0.0.3.  Press <ctrl>-D at the prompt to exit.\00"
+    c"Welcome to nil v0.0.4.  Press <ctrl>-D at the prompt to exit.\00"
 
 #define PROMPTARRAY_LEN 6
 @promptArray = internal constant [PROMPTARRAY_LEN x %c_char] c"nil> \00"
+
+#define KNOWNARRAY_LEN 16
+@knownArray = internal constant [KNOWNARRAY_LEN x %c_char] c"Known strings: \00"
 
 #define BADCHARARRAY_LEN 16
 @badCharArray = internal constant [BADCHARARRAY_LEN x %c_char]
@@ -151,6 +153,14 @@ define %c_int
     br label %PrintPrompt
 
 PrintPrompt:
+    #if 1
+    ; Show the current list of strings before each new prompt
+    %knownStr = getelementptr [KNOWNARRAY_LEN x %c_char]* @knownArray,
+                                                          i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %knownStr)
+    call NILCC void @PrintAllStrings()
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+    #endif
     %promptString = getelementptr [PROMPTARRAY_LEN x %c_char]*
                                            @promptArray, i64 0, i64 0
     call ccc %c_int @putstring(%c_char* %promptString)

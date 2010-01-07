@@ -3,6 +3,13 @@
 ;
 ; Expression implementation--the heart of any lisp.
 ;
+; FIXME: most of these routines are general implementations that
+; sanity-check their arguments.  But when used internally the calling
+; code often knows that the checks are not necessary.  Those
+; checks could someday be optimized away by creating unchecked versions
+; for internal use.  Also, we might be able to save a comparison by
+; having a separate internal tag for nil, though that may not save
+; anything noticable.
 ;
 ; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
@@ -12,6 +19,14 @@
 #include "system.llh"
 #include "nil.llh"
 #include "exp.llh"
+
+;**********************************************************************
+; Private declarations
+;
+;**********************************************************************
+
+    declare NILCC void @PrintAtom(%Exp %exp)
+    declare NILCC void @PrintCDR(%Exp %exp)
 
 ;**********************************************************************
 ; Tag manipulation functions
@@ -37,8 +52,7 @@
 define NILCC %Tag
 @GetTag(%Exp %exp)
 {
-    %tagExp = and %Exp %exp, 7
-    %tag = bitcast %Exp %tagExp to %Tag
+    %tag = trunc %Exp %exp to %Tag
     ret %Tag %tag
 }
 
@@ -58,11 +72,11 @@ define NILCC %Exp
     %mask = xor %Exp 7, -1 ; %mask = "bitwise not" %Exp
     %clearedExp = and %Exp %exp, %mask
 
-    #ifndef NDEBUG
-    %tag = call NILCC %Tag @GetTag(%Exp %clearedExp)
-    %isZero = icmp eq %Tag %tag, 0
-    assert(%isZero)
-    #endif
+        #ifndef NDEBUG
+        %tag = call NILCC %Tag @GetTag(%Exp %clearedExp)
+        %isZero = icmp eq %Tag %tag, 0
+        assert(%isZero)
+        #endif
 
     ret %Exp %clearedExp
 }
@@ -84,20 +98,14 @@ define NILCC %Exp
 define NILCC %Exp
 @AddTag(%Exp %exp, %Tag %tag)
 {
-    #ifndef NDEBUG
-    ; Assert tag <= 7
-    %inBounds = icmp ule %Tag %tag, 7
-    assert(%inBounds)
-    #endif
-
-    %tagExp = bitcast %Tag %tag to %Exp
+    %tagExp = zext %Tag %tag to %Exp
     %newExp = xor %Exp %exp, %tagExp
 
-    #ifndef NDEBUG
-    %newTag = call NILCC %Tag @GetTag(%Exp %newExp)
-    %same = icmp eq %Tag %tag, %newTag
-    assert(%same)
-    #endif
+        #ifndef NDEBUG
+        %newTag = call NILCC %Tag @GetTag(%Exp %newExp)
+        %same = icmp eq %Tag %tag, %newTag
+        assert(%same)
+        #endif
 
     ret %Exp %newExp
 }
@@ -140,7 +148,12 @@ define NILCC i1
 }
 
 ;**********************************************************************
-; str2nil_symbol
+; Conversions
+;
+;**********************************************************************
+
+;**********************************************************************
+; str2Exp
 ;
 ; Converts the char* pointer to an Expression with the correct tag.
 ; THIS IS ONLY A CONVERSION FUNCTION--use NewSymbol to get a unique
@@ -151,24 +164,24 @@ define NILCC i1
 ;**********************************************************************
 
 define NILCC %Exp
-@str2nil_symbol(%c_char* %str)
+@str2Exp(%c_char* %str)
 {
-    ; FIXME: what if %str is null?  This is almost certainly the wrong
-    ; behavior but what is the correct lisp semantics?
-    ; need to be careful about the precise meaning of nil in lisp.
-    ; For now, assert that it isn't so it can't silently do The Wrong
-    ; Thing
-    %notNull = icmp ne %c_char* %str, null
-    ; calling the raw function because until the semantics are settled
-    ; this should not be permitted no matter what NDEBUG says
-    call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
+        ; FIXME: what if %str is null?  This is almost certainly the wrong
+        ; behavior but what is the correct lisp semantics?
+        ; need to be careful about the precise meaning of nil in lisp.
+        ; For now, assert that it isn't so it can't silently do The Wrong
+        ; Thing
+        %notNull = icmp ne %c_char* %str, null
+        ; calling the raw function because until the semantics are settled
+        ; this should not be permitted no matter what NDEBUG says
+        call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
 
-    #ifndef DEBUG
-    ; Also it obviously must be aligned
-    %voidPtr = bitcast %c_char* %str to i8* ; should never be necessary
-    %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
-    assert(%aligned)
-    #endif
+        #ifndef DEBUG
+        ; Also it obviously must be aligned
+        %voidPtr = bitcast %c_char* %str to i8* ; should never be necessary
+        %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
+        assert(%aligned)
+        #endif
 
     %untaggedExp = ptrtoint %c_char* %str to %Exp
     %exp = call NILCC %Exp @AddTag(%Exp %untaggedExp, %Tag SYMBOL_TAG)
@@ -177,9 +190,9 @@ define NILCC %Exp
 }
 
 ;**********************************************************************
-; nil_symbol2str
+; Exp2str
 ;
-; Converts a Symbol xpression back to a char*.  IT RETURNS A POINTER
+; Converts a Symbol expression back to a char*.  IT RETURNS A POINTER
 ; TO THE CANONICAL STRING OBJECT, so do *not* modify it!
 ;
 ; FIXME: should obviously be inlined along with the above.
@@ -187,13 +200,13 @@ define NILCC %Exp
 ;**********************************************************************
 
 define NILCC %c_char*
-@nil_symbol2str(%Exp %exp)
+@Exp2str(%Exp %exp)
 {
-    #ifndef DEBUG
-    %tag = call NILCC %Tag @GetTag(%Exp %exp)
-    %isSymbol = icmp eq %Tag %tag, SYMBOL_TAG
-    assert(%isSymbol)
-    #endif
+        #ifndef DEBUG
+        %tag = call NILCC %Tag @GetTag(%Exp %exp)
+        %isSymbol = icmp eq %Tag %tag, SYMBOL_TAG
+        assert(%isSymbol)
+        #endif
 
     %untaggedExp = call NILCC %Exp @ClearTag(%Exp %exp)
     %str = inttoptr %Exp %untaggedExp to %c_char*
@@ -202,7 +215,164 @@ define NILCC %c_char*
 }
 
 ;**********************************************************************
-; GetSymbol
+; nil_cell2Exp
+;
+; Converts the nil_cell* pointer to an Expression with the correct
+; tag.  THIS IS ONLY A CONVERSION FUNCTION and has no idea if the
+; pointer actually points to anything sane.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@nil_cell2Exp(%nil_cell* %cell)
+{
+        ; FIXME: what if %cell is null?  This is almost certainly the wrong
+        ; behavior but what is the correct lisp semantics?
+        ; need to be careful about the precise meaning of nil in lisp.
+        ; For now, assert that it isn't so it can't silently do The Wrong
+        ; Thing
+        %notNull = icmp ne %nil_cell* %cell, null
+        ; calling the raw function because until the semantics are settled
+        ; this should not be permitted no matter what NDEBUG says
+        call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
+
+        #ifndef DEBUG
+        ; Also it obviously must be aligned
+        %voidPtr = bitcast %nil_cell* %cell to i8*
+        %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
+        assert(%aligned)
+        #endif
+
+    %untaggedExp = ptrtoint %nil_cell* %cell to %Exp
+    %exp = call NILCC %Exp @AddTag(%Exp %untaggedExp, %Tag CELL_TAG)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; Exp2nil_cell
+;
+; Converts an Expression to a cell pointer.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %nil_cell*
+@Exp2nil_cell(%Exp %exp)
+{
+        #ifndef DEBUG
+        %tag = call NILCC %Tag @GetTag(%Exp %exp)
+        %isCell = icmp eq %Tag %tag, CELL_TAG
+        assert(%isCell)
+        #endif
+
+    %untaggedExp = call NILCC %Exp @ClearTag(%Exp %exp)
+    %cell = inttoptr %Exp %untaggedExp to %nil_cell*
+
+    ret %nil_cell* %cell
+}
+
+;**********************************************************************
+; The Seven Operators
+;
+; These are supposed to be a minimal set of primitive lisp operators
+; for an implementation of lisp *in lisp*.  Many will be implemented
+; in terms of another form more useful internally.
+;
+;**********************************************************************
+
+; #2 -- atom
+define NILCC i1
+@Atom(%Exp %exp)
+{
+    ; Test for nil, which is an atom as well as a list
+    %nilp = icmp eq %Exp %exp, NIL
+    br i1 %nilp, label %IsNil, label %NotNil
+
+IsNil:
+    ret i1 true
+
+NotNil:
+    ; Implemented in a way that allows expansion to other types of
+    ; atoms besides symbols
+    %tag = call NILCC %Tag @GetTag(%Exp %exp)
+    %atomp = icmp ne %Tag %tag, CELL_TAG
+
+    ret i1 %atomp
+}
+
+; #4 -- car
+define NILCC %Exp
+@nil_car(%Exp %exp)
+{
+        ;FIXME: report errors instead of dying
+        %atomp = call NILCC i1 @Atom(%Exp %exp)
+        ; FIXME: need an assert_false facility
+        %listp = xor i1 %atomp, 1
+        call NILCC void @assert_impl(i1 %listp, %c_int __LINE__)
+
+    %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
+    %carPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 0
+    %car = load %Exp* %carPtr
+
+    ret %Exp %car
+}
+
+; #5 -- cdr
+define NILCC %Exp
+@nil_cdr(%Exp %exp)
+{
+        ;FIXME: report errors instead of dying
+        %atomp = call NILCC i1 @Atom(%Exp %exp)
+        ; FIXME: need an assert_false facility
+        %listp = xor i1 %atomp, 1
+        call NILCC void @assert_impl(i1 %listp, %c_int __LINE__)
+
+    %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
+    %cdrPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 1
+    %cdr = load %Exp* %cdrPtr
+
+    ret %Exp %cdr
+}
+
+; #6 -- cons
+define NILCC %Exp
+@nil_cons(%Exp %car, %Exp %cdr)
+{
+    ; Compute sizeof(nil_cell)
+    %sizeAddr = getelementptr %nil_cell* null, i64 1
+    %size = ptrtoint %nil_cell* %sizeAddr to %c_size_t
+
+    ; Get a new cell
+    %newMem = call ccc i8* @malloc(%c_size_t %size)
+    #ifndef NDEBUG
+    ; Check that we have memory
+    %gotMem = icmp ne i8* %newMem, null
+    assert(%gotMem)
+    ; Check that it is aligned
+    %aligned = call NILCC i1 @Aligned(i8* %newMem)
+    assert(%aligned)
+    #endif
+    %newCell = bitcast i8* %newMem to %nil_cell*
+
+    ; Set the car
+    %carPtr = getelementptr %nil_cell* %newCell, i32 0, i32 0
+    store %Exp %car, %Exp* %carPtr
+
+    ; Set the cdr
+    %cdrPtr = getelementptr %nil_cell* %newCell, i32 0, i32 1
+    store %Exp %cdr, %Exp* %cdrPtr
+
+    %newExp = call NILCC %Exp @nil_cell2Exp(%nil_cell* %newCell)
+
+    ret %Exp %newExp
+}
+
+;**********************************************************************
+; NewSymbol
 ;
 ; Returns a symbol whose name is the value of the given string.
 ;
@@ -211,19 +381,19 @@ define NILCC %c_char*
 define NILCC %Exp
 @NewSymbol(%c_char* %name)
 {
-    #ifndef NDEBUG
-    ; Check to see that the string is at least one character long
-    ; (The empty string is a valid string but *not* a valid symbol
-    ; name!)
-    %len = call ccc %c_size_t @strlen(%c_char* %name)
-    %positive = icmp ugt %c_size_t %len, 0
-    assert(%positive)
-    #endif
+        #ifndef NDEBUG
+        ; Check to see that the string is at least one character long
+        ; (The empty string is a valid string but *not* a valid symbol
+        ; name!)
+        %len = call ccc %c_size_t @strlen(%c_char* %name)
+        %positive = icmp ugt %c_size_t %len, 0
+        assert(%positive)
+        #endif
 
     ; Get a pointer to a uniqueified string with the same value
     %string = call NILCC %c_char* @UniqueString(%c_char* %name)
 
-    %exp = call NILCC %Exp @str2nil_symbol(%c_char* %string)
+    %exp = call NILCC %Exp @str2Exp(%c_char* %string)
 
     ret %Exp %exp
 }
@@ -231,16 +401,47 @@ define NILCC %Exp
 ;**********************************************************************
 ; PrintExp
 ;
+; FIXME: should use the atom predicate and factor out a PrintAtom
+; method.
+;
 ;**********************************************************************
 
 define NILCC void
 @PrintExp(%Exp %exp)
+{
+    %isAtom = call NILCC i1 @Atom(%Exp %exp)
+    br i1 %isAtom, label %IsAtom, label %IsCell
+
+IsAtom:
+    call ccc void @PrintAtom(%Exp %exp)
+    ret void
+
+IsCell:
+    call ccc %c_int @putchar(%c_int ASCII_LPAREN)
+    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    call NILCC void @PrintExp(%Exp %car)
+    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    call NILCC void @PrintCDR(%Exp %cdr)
+    call ccc %c_int @putchar(%c_int ASCII_RPAREN)
+    ret void
+}
+
+;**********************************************************************
+; PrintAtom
+;
+; Helper function for PrintExp.
+;
+;**********************************************************************
+
+define NILCC void
+@PrintAtom(%Exp %exp)
 {
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
 
     switch %Tag %tag, label %CantHappen [
 
         %Tag SYMBOL_TAG, label %Symbol
+        %Tag   CELL_TAG, label %CellTag
     ]
 
 CantHappen:
@@ -248,16 +449,60 @@ CantHappen:
     br label %CantHappen
 
 Symbol:
-    %str = call NILCC %c_char* @nil_symbol2str(%Exp %exp)
+    %str = call NILCC %c_char* @Exp2str(%Exp %exp)
     call ccc %c_int @putstring(%c_char* %str)
+    ret void
+
+CellTag:
+    %isNil = icmp eq %Exp %exp, NIL
+    br i1 %isNil, label %IsNil, label %CantHappen
+
+IsNil:
+    call ccc %c_int @putchar(%c_int ASCII_LPAREN)
+    call ccc %c_int @putchar(%c_int ASCII_RPAREN)
+    ret void
+}
+
+;**********************************************************************
+; PrintCDR
+;
+; Helper function for PrintExp, nothing else should call.
+;
+;**********************************************************************
+
+define NILCC void
+@PrintCDR(%Exp %exp)
+{
+    %notNil = icmp ne %Exp %exp, NIL
+    br i1 %notNil, label %IsCell, label %IsNil
+
+IsNil:
+    ; End of list, nothing to do (which is why we handle this case
+    ; specially instead of passing it along to PrintAtom
+    ret void
+
+NotNil:
+    %isAtom = call NILCC i1 @Atom(%Exp %exp)
+    br i1 %isAtom, label %IsAtom, label %IsCell
+
+IsAtom:
+    ; the CDR is an atom, so we have a dotted pair
+    call ccc %c_int @putchar(%c_int ASCII_PERIOD)
+    call ccc void @PrintAtom(%Exp %exp)
+    ret void
+
+IsCell:
+    ; Another cell, so we need a separator
+    call ccc %c_int @putchar(%c_int ASCII_SPACE)
+    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    call NILCC void @PrintExp(%Exp %car)
+    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    call NILCC void @PrintCDR(%Exp %cdr)
     ret void
 }
 
 ;**********************************************************************
 ; Strings
-;
-; (A small module, placed here until I decide the best place to factor
-; it out.)
 ;
 ; A simple little module that ensures that every string *value* is
 ; stored in a single unique location, vital for Lisp to work with any
@@ -270,7 +515,22 @@ Symbol:
 ;
 ;**********************************************************************
 
-@ppListHead = internal global %StringList* null
+@pStringList = internal global %Exp NIL
+
+;**********************************************************************
+; PrintAllStrings
+;
+; A debugging routine that prints the list of strings.
+;
+;**********************************************************************
+
+define NILCC void
+@PrintAllStrings()
+{
+    %stringList = load %Exp* @pStringList
+    call NILCC void @PrintExp(%Exp %stringList)
+    ret void
+}
 
 ;**********************************************************************
 ; UniqueString
@@ -282,44 +542,41 @@ Symbol:
 ;
 ;**********************************************************************
 
+; Message for monitoring the interpreter behavior
+#define NEW_LEN 6
+@newArray = internal constant [NEW_LEN x %c_char] c"(add)\00"
+
+
 define NILCC %c_char*
 @UniqueString(%c_char* %string)
 {
     ; Is there already such a string in the list?
     %existingString = call NILCC %c_char* @FindString(%c_char* %string)
 
+#if 1
     #ifndef NDEBUG
     ; For paranoia's sake, in debugging mode we'll do the same search
     ; all over again with the recursive implementation and assert that
     ; precisely the same pointer is obtained.
-    %pListHead = load %StringList** @ppListHead
-    %alternateString = call NILCC %c_char* @FindStringR(%StringList* %pListHead,
+    %listHead = load %Exp* @pStringList
+    %alternateString = call NILCC %c_char* @FindStringR(%Exp %listHead,
                                                         %c_char* %string)
     %equal = icmp eq %c_char* %existingString, %alternateString
     assert(%equal)
     #endif
+#endif
 
     %exists = icmp ne %c_char* %existingString, null
     br i1 %exists, label %ReturnOldString, label %GetNewString
 
 ReturnOldString:
-; These blocks are very useful for verifying that the code is re-using
-; old strings as it should, so I'll leave them here for the time being.
-; It prepends a (O) or an (N) to symbols as they are echoed back
-; depending on whether it returned an (O)ld or (N)ew object.
-#if 1
-call ccc %c_int @putchar(%c_int ASCII_LPAREN)
-call ccc %c_int @putchar(%c_int ASCII_O)
-call ccc %c_int @putchar(%c_int ASCII_RPAREN)
-#endif
     ; If so, return it.
     ret %c_char* %existingString
 
 GetNewString:
 #if 1
-call ccc %c_int @putchar(%c_int ASCII_LPAREN)
-call ccc %c_int @putchar(%c_int ASCII_N)
-call ccc %c_int @putchar(%c_int ASCII_RPAREN)
+%newStr = getelementptr [NEW_LEN x %c_char]* @newArray, i64 0, i64 0
+call ccc %c_int @putstring(%c_char* %newStr)
 #endif
     ; If not, allocate a new string with that value...
     %newString = call ccc %c_char* @strdup(%c_char* %string)
@@ -327,13 +584,6 @@ call ccc %c_int @putchar(%c_int ASCII_RPAREN)
     ; Did we get it?
     %gotString = icmp ne %c_char* %newString, null
     assert(%gotString)
-    ; Also check to see that the alignment is OK, because we're paranoid
-    ; FIXME: this code is going to get duplicated in the expression
-    ; module, so this should probably not remain inlined like this
-    %addr = ptrtoint %c_char* %newString to %Word
-    %tag = and %Word %addr, 7 ; 2^3-1
-    %aligned = icmp eq %Word %tag, 0
-    assert(%aligned)
     #endif
 
     ; ...add it to the list...
@@ -354,27 +604,14 @@ call ccc %c_int @putchar(%c_int ASCII_RPAREN)
 define NILCC void
 @PushString(%c_char* %string)
 {
-    ; Compute sizeof(StringList)
-    %sizeAddr = getelementptr %StringList* null, i64 1
-    %size = ptrtoint %StringList* %sizeAddr to %c_size_t
+    %car = call NILCC %Exp @str2Exp(%c_char* %string)
 
-    ; Get a new StringList element
-    %newMem = call ccc i8* @malloc(%c_size_t %size)
-    %gotMem = icmp ne i8* %newMem, null
-    assert(%gotMem)
-    %newElement = bitcast i8* %newMem to %StringList*
+    %cdr = load %Exp* @pStringList
 
-    ; Set the element to point to that string
-    %stringField = getelementptr %StringList* %newElement, i32 0, i32 0
-    store %c_char* %string, %c_char** %stringField
-
-    ; Point its next field at the current head
-    %nextField = getelementptr %StringList* %newElement, i32 0, i32 1
-    %oldHead = load %StringList** @ppListHead
-    store %StringList* %oldHead, %StringList** %nextField
+    %newHead = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
 
     ; Make it the new head
-    store %StringList* %newElement, %StringList** @ppListHead
+    store %Exp %newHead, %Exp* @pStringList
 
     ret void
 }
@@ -394,31 +631,35 @@ define NILCC void
 define NILCC %c_char*
 @FindString(%c_char* %searchString)
 {
-    ; Paranoia--disallow calls with null (empty strings are fine)
-    #ifndef NDEBUG
-    %haveInput = icmp ne %c_char* %searchString, null
-    assert(%haveInput)
-    #endif
+        ; Paranoia--disallow calls with null (empty strings are fine)
+        #ifndef NDEBUG
+        %haveInput = icmp ne %c_char* %searchString, null
+        assert(%haveInput)
+        #endif
 
-    ; StringList *pThisElement
-    %ppThisElement = alloca %StringList*
+    ; Local variable
+    %pThisCell = alloca %Exp
 
-    ; pThisElement = &ListHead
-    %pListHead = load %StringList** @ppListHead
-    store %StringList* %pListHead, %StringList** %ppThisElement
+    ; pThisCell = &ListHead
+    %listHead = load %Exp* @pStringList
+    store %Exp %listHead, %Exp* %pThisCell
     br label %Loop
 
 Loop:
-    ; while (pThisElement != null)
-    %pThisElement = load %StringList** %ppThisElement
-    %notNull = icmp ne %StringList* %pThisElement, null
-    br i1 %notNull, label %BeginLoop, label %EndLoop
+    ; while (thisCell != nil)
+    %thisCell = load %Exp* %pThisCell
+    %notNil = icmp ne %Exp %thisCell, NIL
+    br i1 %notNil, label %BeginLoop, label %EndLoop
 
     BeginLoop:
-        ; if (pThisElement->string == searchString)
+        ; if ( car(thisCell) == searchString)
         ; FIXME: should use the LLVM 2.6 inbounds keyword
-        %thisStringPtr = getelementptr %StringList* %pThisElement, i32 0, i32 0
-        %thisString = load %c_char** %thisStringPtr
+        %car = call NILCC %Exp @nil_car(%Exp %thisCell)
+
+        ; Do the compare--note that we *can't* do this with anything like
+        ; eq, because we already need uniqueness to make the
+        ; pointer compare in eq work
+        %thisString = call NILCC %c_char* @Exp2str(%Exp %car)
         %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
                                        %c_char* %searchString)
         %equal = icmp eq %c_int %cmp, 0
@@ -426,14 +667,13 @@ Loop:
 
         BeginIf:
 
-            ; return thisElement->string
+            ; return this string
             ret %c_char* %thisString
 
         EndIf:
-        ; thisElement = thisElement->next
-        %nextElementPtr = getelementptr %StringList* %pThisElement, i32 0, i32 1
-        %nextElement = load %StringList** %nextElementPtr
-        store %StringList* %nextElement, %StringList** %ppThisElement
+        ; thisCell = cdr(thisCell)
+        %cdr = call NILCC %Exp @nil_cdr(%Exp %thisCell)
+        store %Exp %cdr, %Exp* %pThisCell
         br label %Loop
 
 EndLoop:
@@ -451,26 +691,30 @@ EndLoop:
 ;**********************************************************************
 
 define NILCC %c_char*
-@FindStringR(%StringList* %list, %c_char* %searchString)
+@FindStringR(%Exp %list, %c_char* %searchString)
 {
-    ; Paranoia--disallow calls with null (empty strings are fine)
-    #ifndef NDEBUG
-    %haveInput = icmp ne %c_char* %searchString, null
-    assert(%haveInput)
-    #endif
+        ; Paranoia--disallow calls with null (empty strings are fine)
+        #ifndef NDEBUG
+        %haveInput = icmp ne %c_char* %searchString, null
+        assert(%haveInput)
+        #endif
 
-    %notNull = icmp ne %StringList* %list, null
-    br i1 %notNull, label %NotNull, label %IsNull
+    %notNil = icmp ne %Exp %list, NIL
+    br i1 %notNil, label %NotNil, label %IsNil
 
-IsNull:
+IsNil:
     ; We didn't find it, return null
     ret %c_char* null
 
-NotNull:
-    ; if (pThisElement->string == searchString)
+NotNil:
+    ; if ( car(list) == searchString)
     ; FIXME: should use the LLVM 2.6 inbounds keyword
-    %thisStringPtr = getelementptr %StringList* %list, i32 0, i32 0
-    %thisString = load %c_char** %thisStringPtr
+    %car = call NILCC %Exp @nil_car(%Exp %list)
+
+    ; Do the compare--note that we *can't* do this with anything like
+    ; eq, because this is the direct string compare that makes the
+    ; pointer compare in eq work
+    %thisString = call NILCC %c_char* @Exp2str(%Exp %car)
     %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
                                    %c_char* %searchString)
     %equal = icmp eq %c_int %cmp, 0
@@ -478,14 +722,14 @@ NotNull:
 
 StringsEqual:
 
-    ; return thisElement->string
+    ; return this string
     ret %c_char* %thisString
 
 StringsNotEqual:
-    ; thisElement = thisElement->next
-    %nextElementPtr = getelementptr %StringList* %list, i32 0, i32 1
-    %nextElement = load %StringList** %nextElementPtr
-    %answer = tail call NILCC %c_char* @FindStringR(%StringList* %nextElement,
+    ; FindString( cdr(list) )
+    %cdr = call NILCC %Exp @nil_cdr(%Exp %list)
+    %answer = tail call NILCC %c_char* @FindStringR(%Exp %cdr,
                                                     %c_char* %searchString)
     ret %c_char* %answer
 }
+

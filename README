@@ -4,6 +4,9 @@ README
 
 ChangeLog:
 
+    v0.0.4 * Now we have a list implementation and the list of known
+             strings uses it.
+
     v0.0.3 * Same behavior as v0.0.2, but now the lexer is producing
              genuine Nil symbols and the read loop is printing them
              properly.
@@ -24,14 +27,13 @@ public repository is at http://github.com/dllaurence/Nil.
 For the time being the code is licensed under the LGPL3, just so I'm
 not guilty of releasing code into the wild with ambiguous terms.  But
 frankly, if this is a concern for you, get help for your compulsion to
-treat dangerously experimental code as more than it is. :-)
+treat experimental code as more than it is. :-)
 
 Building:
 
     Um...just type "make".  If it fails, figure out why and send me a
     patch.  A real build system would probably involve more red tape
-    than all the Nil code.  For that matter, this README is probably
-    longer than the Nil code.  :-)  You'll need LLVM and a C compiler.
+    than all the Nil code. :-) You'll need LLVM and a C compiler.
 
 Installation:
 
@@ -42,9 +44,12 @@ Running:
 
 Type "./nil" in the build directory and behold the glory.
 
-In v0.0.3 Nil recognizes and lists the tokens entered on the input line
-separated with spaces.  The interaction loop quits when EOF or an I/O error is
-encountered, and warns about bad characters on the input.
+In v0.0.4 Nil recognizes and lists the tokens entered on the input line
+separated with spaces; symbols not seen before are prefixed with (new) as an
+aid to monitoring the behavior of the symbol uniqueifier.  For the same reason,
+the list of known strings is printed before each prompt.  The interaction loop
+quits when EOF or an I/O error is encountered, and warns about bad characters
+on the input.
 
 You can always tell exactly what nil thinks is a token because tokens are
 always separated by a single space and tokens can never contain spaces; for
@@ -52,9 +57,9 @@ example, '(' and ')' are treated as single tokens in their own right separate
 from symbol strings.  At this point it accepts more characters as symbol
 characters than even lisp should, but that's not worth fixing right now.
 
-Note that while this is the same user-visible behavior as in v0.0.2, internally
-the tokens are now being handled as true lisp symbols, which is a notable
-advance.
+Note that while this is the same user-visible behavior as in v0.0.3 except for
+the monitoring output, internally we now have a true lisp list implementation
+and the list of known strings uses it, which is a notable advance.
 
 HACKING
 
@@ -113,5 +118,5 @@ lex.llh/m     The nil lexer.  This should only depend on c_defs, system,
               elsewhere.
 
 exp.llh/m     The expression implementation, plus support code such as
-              unique strings.
+              the unique string list.
 

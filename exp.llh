@@ -26,17 +26,18 @@
 ; type, always.
 
     %Exp = type %Word
+    %Tag = type i3
+    %nil_cell = type {%Exp, %Exp}
 
 ; Tag field type values.
+    #define SYMBOL_TAG  3
+    ; Testing--should work with any value
+    #define   CELL_TAG  7
 
-    ; Conceptual difference in type that LLVM won't enforce
-    %Tag = type %Word
+    ; This is just a tagged null pointer
+    #define   NIL CELL_TAG
 
-    ; The maximally invasive value for testing purposes
-    #define SYMBOL_TAG 7
-
-    ; Low-level manipulation of the tags embedded in the low-order
-    ; bits.
+; Low-level manipulation of the tags embedded in the low-order bits.
     ; FIXME: these trivial functions should *always* be inlined
     declare NILCC %Tag @GetTag(%Exp %exp)
     declare NILCC %Exp @ClearTag(%Exp %exp)
@@ -45,24 +46,47 @@
 
     declare NILCC i1 @Aligned(i8* %ptr)
 
-    declare NILCC %Exp @str2nil_symbol(%c_char* %str)
-    declare NILCC %c_char* @nil_symbol2str(%Exp %exp)
+; Conversions
 
-; Symbol
+    ; Symbol
+    declare NILCC %Exp     @str2Exp(%c_char* %str)
+    declare NILCC %c_char* @Exp2str(%Exp %exp)
+
+    ; List
+    declare NILCC %Exp       @nil_cell2Exp(%nil_cell* %cell)
+    declare NILCC %nil_cell* @Exp2nil_cell(%Exp       %exp)
+
+; The "seven primitive operators" of Paul Graham's paper, plus
+; internal forms
+
+    ; #2 -- atom
+    declare NILCC i1 @Atom(%Exp %exp)
+
+    ; #4 -- car
+    declare NILCC %Exp @nil_car(%Exp %exp)
+
+    ; #5 -- cdr
+    declare NILCC %Exp @nil_cdr(%Exp %exp)
+
+    ; #6 -- cons
+    declare NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+
+; Other symbol manipulations
 
     declare NILCC %Exp @NewSymbol(%c_char* %name)
 
-    ; Expression I/O
+; Other list manipulations
+
+; Expression I/O
     declare NILCC void @PrintExp(%Exp %exp)
 
     ; String uniquifying
 
-    %StringList = type {%c_char*, %StringList*}
-
+    declare NILCC void     @PrintAllStrings()
     declare NILCC %c_char* @UniqueString(%c_char* %string)
     declare NILCC void     @PushString(%c_char* %string)
     declare NILCC %c_char* @FindString(%c_char* %searchString)
-    declare NILCC %c_char* @FindStringR(%StringList* %list, 
+    declare NILCC %c_char* @FindStringR(%Exp %list, 
                                         %c_char* %searchString)
 
 #endif

@@ -32,6 +32,7 @@
     #define ASCII_SQUOTE    39
     #define ASCII_LPAREN    40
     #define ASCII_RPAREN    41
+    #define ASCII_PERIOD    46
     #define ASCII_COLON     58
 
     ; Digits
@@ -46,6 +47,9 @@
 
     #define ASCII_N         78
     #define ASCII_O         79
+    #define ASCII_P         80
+    #define ASCII_Q         81
+    #define ASCII_R         82
 
     ; Miniscules
     #define ASCII_a         97
