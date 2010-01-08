@@ -25,14 +25,15 @@
 @cant_happen_array = internal constant [34 x %c_char]
     c"Line %d: The impossible happened!\00"
 
-define ccc void @cant_happen_impl(%c_int %line)
+define ccc void @cant_happen_impl(%c_int %line) noreturn
 {
     %pMsg = getelementptr [34 x %c_char]* @cant_happen_array, i64 0, i64 0
 
     ;%printf_cast = bitcast i32 (c_char*, ...)* @printf to i32 (c_char*, %c_int)*
     call ccc %c_int (%c_char*, ...)* @printf(%c_char* %pMsg, %c_int %line)
     call ccc %c_int @putchar(%c_int 10) ; why didn't \10 work in printf?
-    call ccc void @abort()
+    Abort()
+;    call ccc void @abort() noreturn
     ret void
 }
 
@@ -54,8 +55,9 @@ True:
 False:
     %pMsg = getelementptr [29 x %c_char]* @assert_array, i64 0, i64 0
     call ccc %c_int (%c_char*, ...)* @printf(%c_char* %pMsg, %c_int %line)
-    call ccc void @abort()
-    cant_happen() ; Guard; @abort had better never return
+    call ccc void @abort() noreturn
+    cant_happen() ; Guard; @abort had better never return, so if it does
+                  ; at least we'll get a warning message
     ret void
 }
 

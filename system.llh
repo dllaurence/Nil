@@ -58,7 +58,10 @@
 
 ; Assertions
 
-    declare ccc void @abort()
+    declare ccc void @abort() noreturn
+
+    ; Convenience, and ensures we don't forget 'noreturn'
+    #define Abort() call ccc void @abort() noreturn
 
     ; These are defined in system_ll.llm
 
@@ -74,9 +77,9 @@
     ; to compute the test predicate anyway.  Enjoy life without nested
     ; expressions.
 
-    declare ccc void @cant_happen_impl(%c_int %line)
+    declare ccc void @cant_happen_impl(%c_int %line) noreturn
 
-    #define cant_happen() call ccc void @cant_happen_impl(%c_int __LINE__)
+    #define cant_happen() call ccc void @cant_happen_impl(%c_int __LINE__) noreturn
 
     declare ccc void @assert_impl(i1 %test, %c_int %line)
 
