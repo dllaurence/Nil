@@ -48,8 +48,7 @@
     declare NILCC %Exp @ClearTag(%Exp %exp)
     declare NILCC %Exp @AddTag(%Exp %exp, %Tag %tag)
     declare NILCC %Exp @SetTag(%Exp %exp, %Tag %tag)
-
-    declare NILCC i1 @Aligned(i8* %ptr)
+    declare NILCC i1 @TagIsClear(%Exp %exp)
 
 ; Conversions
 
