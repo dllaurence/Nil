@@ -164,6 +164,12 @@ call ccc %c_int @putstring(%c_char* %newStr)
     ; Did we get it?
     %gotString = icmp ne %c_char* %newString, null
     assert(%gotString)
+    ; Check alignment.  Cons will actually do this again with str2Exp,
+    ; but it seems better to have it here as nothing *forces* all calls
+    ; to NewCell() to go through nil_cons().
+    ; This assumes c_char == i8.  Bite me.
+    %aligned = call NILCC i1 @Aligned(%c_char* %newString)
+    assert(%aligned)
     #endif
 
     ; ...add it to the list...

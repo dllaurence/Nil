@@ -6,6 +6,8 @@
 #
 #**********************************************************************
 
+LPPFLAGS = # -D NDEBUG
+
 %.s : %.bc
 	llc -f $<
 
@@ -16,7 +18,7 @@
 	llvm-as $<
 
 %.ll : %.llm
-	cpp -nostdinc -P -x assembler-with-cpp -I. $< $@
+	cpp $(LPPFLAGS) -nostdinc -P -x assembler-with-cpp -I. $< $@
 
 all : nil
 

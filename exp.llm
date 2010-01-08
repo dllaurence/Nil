@@ -18,6 +18,11 @@
 ; most likely place this would be useful would be having a single-compare
 ; test for both "atom, including nil" and "atom but not nil."
 ;
+; There are interesting bitwise intrinsics (such as the count of the
+; number of trailing zeroes in an int) which might be usable to make the
+; tag manipulations go faster.  I may have relied too heavily on what
+; is available from C when I wrote the tag code.
+;
 ; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
 ;
