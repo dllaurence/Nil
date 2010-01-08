@@ -61,26 +61,31 @@
     declare ccc void @abort()
 
     ; These are defined in system_ll.llm
+
+    ; Usage note: this facility is much less useful than in C, because there is
+    ; no expression language.  You must assign the i1 result of a test to a
+    ; register manually, then pass it to assert().  We can't provide any help
+    ; because the "non-hygenic macros" problem is worse than in C, and anything
+    ; that uses a register will capture from the environment.
+
+    ; Because of this, unlike in C the asserts do *not* go away if NDEBUG
+    ; is defined.  At each usage point you will have to do the #ifndef
+    ; guard yourself, because you'll almost certainly have to put something
+    ; to compute the test predicate anyway.  Enjoy life without nested
+    ; expressions.
+
     declare ccc void @cant_happen_impl(%c_int %line)
 
-    #if NDEBUG
-    #define cant_happen()
-    #else
     #define cant_happen() call ccc void @cant_happen_impl(%c_int __LINE__)
-    #endif
 
     declare ccc void @assert_impl(i1 %test, %c_int %line)
 
-    ; Usage note: this is much less useful than in C, because there is no
-    ; expression language.  You must assign the i1 result of a test to a
-    ; register manually, then pass it to assert().  We can't provide any
-    ; help because the "non-hygenic macros" problem is worse than in C, and
-    ; anything that uses a register will capture from the environment.
-    #if NDEBUG
-    #define assert(test)
-    #else
     #define assert(test) call ccc void @assert_impl(i1 test, %c_int __LINE__)
-    #endif
+
+    declare ccc void @assert_false_impl(i1 %test, %c_int %line)
+
+    #define assert_false(test) \
+                  call ccc void @assert_false_impl(i1 test, %c_int __LINE__)
 
 ; stdio
 

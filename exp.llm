@@ -183,9 +183,7 @@ define NILCC %Exp
         ; For now, assert that it isn't so it can't silently do The Wrong
         ; Thing
         %notNull = icmp ne %c_char* %str, null
-        ; calling the raw function because until the semantics are settled
-        ; this should not be permitted no matter what NDEBUG says
-        call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
+        assert(%notNull)
 
         #ifndef DEBUG
         ; Also it obviously must be aligned
@@ -245,9 +243,7 @@ define NILCC %Exp
         ; For now, assert that it isn't so it can't silently do The Wrong
         ; Thing
         %notNull = icmp ne %nil_cell* %cell, null
-        ; calling the raw function because until the semantics are settled
-        ; this should not be permitted no matter what NDEBUG says
-        call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
+        assert(%notNull)
 
         #ifndef DEBUG
         ; Also it obviously must be aligned
@@ -311,9 +307,11 @@ define NILCC i1
 define NILCC %Exp
 @nil_car(%Exp %exp)
 {
-        ;FIXME: report errors instead of dying
+        ;FIXME: report errors instead of dying.  Not
+        ; within #ifndef NDEBUG because until fixed
+        ; this *will* happen and is not acceptable.
         %cellp = call NILCC i1 @Cell(%Exp %exp)
-        call NILCC void @assert_impl(i1 %cellp, %c_int __LINE__)
+        assert(%cellp)
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %carPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 0
@@ -328,7 +326,7 @@ define NILCC %Exp
 {
         ;FIXME: report errors instead of dying
         %cellp = call NILCC i1 @Cell(%Exp %exp)
-        call NILCC void @assert_impl(i1 %cellp, %c_int __LINE__)
+        assert(%cellp)
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %cdrPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 1

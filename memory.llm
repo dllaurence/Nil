@@ -71,8 +71,8 @@ define NILCC void
 ;**********************************************************************
 
 ; Message for monitoring the interpreter behavior
-#define NEW_LEN 6
-@newArray = internal constant [NEW_LEN x %c_char] c"(add)\00"
+#define NEW_LEN 4
+@newArray = internal constant [NEW_LEN x %c_char] c"(+)\00"
 
 
 define NILCC %c_char*

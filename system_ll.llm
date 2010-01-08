@@ -46,16 +46,29 @@ define ccc void @cant_happen_impl(%c_int %line)
 ; never returns
 define ccc void @assert_impl(i1 %test, %c_int %line)
 {
-    br i1 %test, label %Success, label %Failure
+    br i1 %test, label %True, label %False
 
-Success:
+True:
     ret void
 
-Failure:
+False:
     %pMsg = getelementptr [29 x %c_char]* @assert_array, i64 0, i64 0
     call ccc %c_int (%c_char*, ...)* @printf(%c_char* %pMsg, %c_int %line)
     call ccc void @abort()
     cant_happen() ; Guard; @abort had better never return
+    ret void
+}
+
+;**********************************************************************
+; assert_false_impl
+;
+;**********************************************************************
+
+; never returns
+define ccc void @assert_false_impl(i1 %test, %c_int %line)
+{
+    %not = xor i1 %test, 1
+    call ccc void @assert_impl(i1 %not, %c_int %line)
     ret void
 }
 
