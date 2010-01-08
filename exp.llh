@@ -15,27 +15,24 @@
 
 ;FIXME: quite a bit of this header should be private
 
-; Everything in Nil is an expression, implemented as a pointer to an
-; object (of the low-level malloc() sort, not the Smalltalk or even
-; C++ sort).  The pointer is represented as an integer because we will
-; be storing type tags in the low-order bits, and need to know the type
-; before we know how to manipulate the pointer.
+; Fundamental types
 
-; Naming convention note; this isn't nil_exp because I don't think
-; lisp has or needs an explicit name for this type--*EVERYTHING* is this
-; type, always.
+    ; N.B. The fundamental %Exp type is defined in nil.llh
 
-    %Exp = type %Word
-    %Tag = type i3
     %nil_cell = type {%Exp, %Exp}
 
-; Tag field type values.
+; Tag fields.
+
+    %Tag = type i3
+    #define MAX_TAG 7
+
     #define SYMBOL_TAG  3
     ; Testing--should work with any value
     #define   CELL_TAG  7
 
-    ; This is just a tagged null pointer
-    #define   NIL CELL_TAG
+    ; We define Nil as the null symbol instead of the null cell because
+    ; it makes testing for a non-null cell a single comparison.
+    #define   NIL SYMBOL_TAG
 
 ; Low-level manipulation of the tags embedded in the low-order bits.
     ; FIXME: these trivial functions should *always* be inlined
@@ -71,23 +68,16 @@
     ; #6 -- cons
     declare NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
 
+; Other tests
+
+    declare NILCC i1 @Cell(%Exp %exp)
+
 ; Other symbol manipulations
 
     declare NILCC %Exp @NewSymbol(%c_char* %name)
 
-; Other list manipulations
-
 ; Expression I/O
     declare NILCC void @PrintExp(%Exp %exp)
-
-    ; String uniquifying
-
-    declare NILCC void     @PrintAllStrings()
-    declare NILCC %c_char* @UniqueString(%c_char* %string)
-    declare NILCC void     @PushString(%c_char* %string)
-    declare NILCC %c_char* @FindString(%c_char* %searchString)
-    declare NILCC %c_char* @FindStringR(%Exp %list, 
-                                        %c_char* %searchString)
 
 #endif
 

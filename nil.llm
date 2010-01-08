@@ -46,6 +46,7 @@
 #include "system.llh"
 #include "lex.llh"
 #include "exp.llh"
+#include "memory.llh"
 
 ;**********************************************************************
 ; NextToken (public)
@@ -102,8 +103,8 @@ ReturnSymbol:
 
     ; Get the corresponding nil_symbol
     %symbol = call NILCC %Exp @NewSymbol(%c_char* %lexeme)
-
     store %Exp %symbol, %Exp* %expFieldPtr
+
     ret void
 }
 
