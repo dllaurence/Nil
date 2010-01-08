@@ -26,13 +26,23 @@
 ; type, always.
 
     %Exp = type %Word
-    %Tag = type i3
+    ; This and the *_TAG constants are the only places where the code
+    ; assumes the size of the tag field, so it can be extended as needed
+    ; simply by changing the type here.
+    %Tag = type i1
     %nil_cell = type {%Exp, %Exp}
 
 ; Tag field type values.
-    #define SYMBOL_TAG  3
+    ; FIXME: I think careful choices of the tag bit patterns would make it
+    ; possible to make comparisons like "atom but not nil" and "cell but
+    ; not nil" cheaper.
+    ; But for now, these values are randomly chosen to ensure the code
+    ; is clean and not depending on particular bit patterns.  They should
+    ; fit insize a %Tag type (or they'll be silently wrapped), but otherwise
+    ; are arbitrary.
+    #define SYMBOL_TAG  0
     ; Testing--should work with any value
-    #define   CELL_TAG  7
+    #define   CELL_TAG  1
 
     ; This is just a tagged null pointer
     #define   NIL CELL_TAG

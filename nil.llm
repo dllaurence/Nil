@@ -54,6 +54,8 @@
 ; by the parser from the lexemes identified by NextLexeme().  Part of
 ; the expression module because it knows about expression types.
 ;
+; FIXME: figure out how to return the structure properly.
+;
 ;**********************************************************************
 
 %Token = type {%c_int, %Exp}
@@ -71,15 +73,15 @@ define NILCC void
 
     switch %c_int %tokenType, label %CantHappen [
 
-        %c_int LEX_EOF,        label %ReturnCode
-        %c_int LEX_IOERROR,    label %ReturnCode
-        %c_int LEX_BADCHAR,    label %ReturnCode
+        %c_int NIL_EOF,        label %ReturnCode
+        %c_int NIL_IOERROR,    label %ReturnCode
+        %c_int NIL_BADCHAR,    label %ReturnCode
 
         %c_int ASCII_NEWLINE,  label %ReturnCode
 
         %c_int ASCII_LPAREN,   label %ReturnCode
         %c_int ASCII_RPAREN,   label %ReturnCode
-        %c_int LEX_SYMBOL,     label %ReturnSymbol
+        %c_int NIL_SYMBOL,     label %ReturnSymbol
     ]
 
 CantHappen:
@@ -87,7 +89,7 @@ CantHappen:
     br label %CantHappen
 
 ReturnCode:
-    store %Exp 0, %Exp* %expFieldPtr
+    store %Exp NIL, %Exp* %expFieldPtr
     ret void
 
 ReturnSymbol:
@@ -104,6 +106,160 @@ ReturnSymbol:
     %symbol = call NILCC %Exp @NewSymbol(%c_char* %lexeme)
 
     store %Exp %symbol, %Exp* %expFieldPtr
+    ret void
+}
+
+;**********************************************************************
+; Parser
+;
+; The beginnings of a parser module.
+;
+;**********************************************************************
+
+;**********************************************************************
+; NextExp (public)
+;
+; The Nil parser.
+;
+;**********************************************************************
+
+define NILCC void
+@NextExp(%Token* %retTokenPtr)
+{
+    ; Temporary space for the token
+    %tokenPtr = alloca %Token
+    %typeFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
+    %expFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
+
+    ; We'll need these too
+    %retTypeFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 0
+    %retExpFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 1
+    br label %ReadToken
+
+ReadToken:
+    call NILCC void @NextToken(%Token* %tokenPtr)
+
+    %thisType = load %c_int* %typeFieldPtr
+
+    switch %c_int %thisType, label %CantHappen [
+
+        %c_int NIL_EOF,        label %Exception
+        %c_int NIL_IOERROR,    label %Exception
+        %c_int NIL_BADCHAR,    label %Exception
+
+        %c_int ASCII_NEWLINE,  label %Exception ; !!!
+
+        %c_int ASCII_LPAREN,   label %BeginList
+        %c_int ASCII_RPAREN,   label %Exception
+        %c_int NIL_SYMBOL,     label %ReturnToken
+        %c_int NIL_CELL,       label %CantHappen
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+Exception:
+    ; Die for now, until the normal logic is correct
+    call ccc void @abort()
+    br label %CantHappen
+
+BeginList:
+    call NILCC void @ParseList(%Token* %tokenPtr)
+    br label %ReturnToken
+
+EndList:
+    store %c_int NIL_EXTRA_RPAREN, %c_int* %typeFieldPtr
+    br label %ReturnToken
+
+ReturnToken:
+    %token = load %Token* %tokenPtr
+    store %Token %token, %Token* %retTokenPtr
+    ret void
+}
+
+;**********************************************************************
+; ParseList (private)
+;
+;**********************************************************************
+
+#define CONTPROMPTARRAY_LEN 5
+@contPromptArray = internal constant [CONTPROMPTARRAY_LEN x %c_char] c"--> \00"
+
+define NILCC void
+@ParseList(%Token* %retTokenPtr)
+{
+    ; Temporary space for the token
+    %tokenPtr = alloca %Token
+    %typeFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
+    %expFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
+
+    ; We'll need these too
+    %retTypeFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 0
+    %retExpFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 1
+    br label %ReadToken
+
+ReadToken:
+    call NILCC void @NextToken(%Token* %tokenPtr)
+
+    %thisType = load %c_int* %typeFieldPtr
+
+    switch %c_int %thisType, label %CantHappen [
+
+        %c_int NIL_EOF,        label %Exception
+        %c_int NIL_IOERROR,    label %Exception
+        %c_int NIL_BADCHAR,    label %Exception
+
+        %c_int ASCII_NEWLINE,  label %Exception ; !!!
+
+        %c_int ASCII_LPAREN,   label %BeginList
+        %c_int ASCII_RPAREN,   label %EndList
+        %c_int NIL_SYMBOL,     label %Symbol
+        %c_int NIL_CELL,       label %CantHappen
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+Exception:
+    ; Die for now, until the normal logic is correct
+    call ccc void @abort()
+    br label %CantHappen
+
+Newline:
+    %promptStr = getelementptr [CONTPROMPTARRAY_LEN x %c_char]* @contPromptArray,
+                                                                i64 0, i64 0
+    call ccc %c_int putstring(%c_char* %promptStr)
+    br label %ReadToken
+
+BeginList:
+    call NILCC void @ParseList(%Token* %tokenPtr)
+    %car = load %Exp* %expFieldPtr
+    call NILCC void @ParseList(%Token* %tokenPtr)
+    %cdr = load %Exp* %expFieldPtr
+    br label %ReturnToken
+
+EndList:
+    ; We're calling 'NIL' a symbol here, which is sort of true but
+    ; indicates that 'symbol' really means something like 'atom'
+    store %c_int NIL_SYMBOL, %c_int* %typeFieldPtr
+    store %Exp NIL, %Exp* %tokenPtr
+    br label %ReturnToken
+
+Symbol:
+    %car = load %Exp* %expFieldPtr
+    call NILCC void @ParseList(%Token* %tokenPtr)
+    FIXME: switch on what ParseList returned
+    %cdr = load %Exp* %expFieldPtr
+    %cell = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+    store %c_int NIL_CELL, %c_int* %retTypeFieldPtr
+    store %Exp %cell, %Exp* %retExpFieldPtr
+    ret void
+
+ReturnToken:
+    %token = load %Token* %tokenPtr
+    store %Token %token, %Token* %retTokenPtr
     ret void
 }
 
@@ -167,16 +323,17 @@ PrintPrompt:
     br label %ReadChar
 
 ReadChar:
-    call NILCC void @NextToken(%Token* %tokenPtr)
+    call NILCC void @NextExp(%Token* %tokenPtr)
     %codePtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
     %code = load %c_int* %codePtr
 
     switch %c_int %code, label %PrintChar [
 
-        %c_int LEX_EOF,      label %Exit
-        %c_int LEX_IOERROR,  label %ExitIOError
-        %c_int LEX_BADCHAR,  label %WarnBadChar
-        %c_int LEX_SYMBOL,   label %PrintSymbol
+        %c_int NIL_EOF,      label %Exit
+        %c_int NIL_IOERROR,  label %ExitIOError
+        %c_int NIL_BADCHAR,  label %WarnBadChar
+        %c_int NIL_SYMBOL,   label %PrintExp
+        %c_int NIL_CELL,     label %PrintExp
 
         %c_int ASCII_NEWLINE,  label %NewLine
     ]
@@ -202,11 +359,10 @@ WarnBadChar:
     store i1 1, i1* %hadInputPtr
     br label %ReadChar
 
-PrintSymbol:
+PrintExp:
     %expPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
-    %symbolExp = load %Exp* %expPtr
-    ;call ccc %c_int @putstring(%c_char* %lexeme)
-    call NILCC void @PrintExp(%Exp %symbolExp)
+    %exp = load %Exp* %expPtr
+    call NILCC void @PrintExp(%Exp %exp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
     br label %ReadChar

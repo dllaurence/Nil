@@ -19,15 +19,36 @@
 ;**********************************************************************
 
 ; Calling convention for all internal functions
-#define NILCC fastcc
+
+    #define NILCC fastcc
 
 ; A small attempt to be machine word independent.  Here I assume that
 ; on modern machines a word is exactly the size of a generic pointer;
 ; this isn't true on ancient architectures, but who is going to run
 ; this code on anything that old?
-%Word = type %c_intptr_t
-#define WORD_T_SIZEOF C_INTPTR_T_SIZEOF
-#define WORD_T_BITSOF C_INTPTR_T_BITSOF
+
+    %Word = type %c_intptr_t
+    #define WORD_T_SIZEOF C_INTPTR_T_SIZEOF
+    #define WORD_T_BITSOF C_INTPTR_T_BITSOF
+
+; Codes common to multiple modules
+
+    ; Nil defines its own values independent of what libc or system
+    ; return--this is tedious but safer because it decouples the code.
+
+    ; I/O Exceptions
+    #define NIL_EOF           -1
+    #define NIL_IOERROR       -2
+
+    ; Lexer Exceptions
+    #define NIL_BADCHAR       -3
+
+    ; Parser Exceptions
+    #define NIL_EXTRA_RPAREN  -4
+
+    ; Normal Parsed Expressions
+    #define NIL_SYMBOL        -5
+    #define NIL_CELL          -6
 
 #endif
 
