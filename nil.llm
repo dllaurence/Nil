@@ -46,6 +46,7 @@
 #include "system.llh"
 #include "lex.llh"
 #include "exp.llh"
+#include "memory.llh"
 
 ;**********************************************************************
 ; NextToken (public)
@@ -109,6 +110,7 @@ ReturnSymbol:
     ret void
 }
 
+#if 0
 ;**********************************************************************
 ; Parser
 ;
@@ -230,7 +232,7 @@ Exception:
 Newline:
     %promptStr = getelementptr [CONTPROMPTARRAY_LEN x %c_char]* @contPromptArray,
                                                                 i64 0, i64 0
-    call ccc %c_int putstring(%c_char* %promptStr)
+    call ccc %c_int @putstring(%c_char* %promptStr)
     br label %ReadToken
 
 BeginList:
@@ -262,6 +264,7 @@ ReturnToken:
     store %Token %token, %Token* %retTokenPtr
     ret void
 }
+#endif
 
 ;**********************************************************************
 ; Some interpreter messages
@@ -323,7 +326,7 @@ PrintPrompt:
     br label %ReadChar
 
 ReadChar:
-    call NILCC void @NextExp(%Token* %tokenPtr)
+    call NILCC void @NextToken(%Token* %tokenPtr)
     %codePtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
     %code = load %c_int* %codePtr
 

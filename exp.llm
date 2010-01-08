@@ -8,12 +8,15 @@
 ; code often knows that the checks are not necessary.  Those checks
 ; could someday be optimized away by creating unchecked versions for
 ; internal use, since both the parser and the string uniqueifier always
-; know the run-time type of their objects.  Also, we might be able to
-; save a comparison or two by having a separate internal tag for nil
-; and/or tricky choices for the bit patterns of the tag values (testing
-; a subfield gives us a tuple of types and if arranged properly could
-; replace a series of tests for membership in one of several types that
-; will be treated the same).
+; know the run-time type of their objects.
+;
+; Also, we might be able to save a comparison or two by having a separate
+; internal tag for nil and/or tricky choices for the bit patterns of the
+; tag values (testing a subfield gives us a test for a set of types and
+; if arranged properly could replace a common series of tests for
+; membership in one of several types that will be treated the same).  The
+; most likely place this would be useful would be having a single-compare
+; test for both "atom, including nil" and "atom but not nil."
 ;
 ; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
@@ -23,6 +26,7 @@
 #include "system.llh"
 #include "nil.llh"
 #include "exp.llh"
+#include "memory.llh"
 
 ;**********************************************************************
 ; Private declarations
@@ -73,7 +77,7 @@ define NILCC %Exp
 @ClearTag(%Exp %exp)
 {
     ; Size-independent way to express the mask we need
-    %mask = xor %Exp 7, -1 ; %mask = "bitwise not" %Exp
+    %mask = xor %Exp MAX_TAG, -1 ; %mask = "bitwise not" MAX_TAG
     %clearedExp = and %Exp %exp, %mask
 
         #ifndef NDEBUG
@@ -95,7 +99,8 @@ define NILCC %Exp
 ; The difference betweeen this and SetTag is that this assumes the tag
 ; field is already clear, and will produce chaos if it is not.
 ; (Precisely, the new tag will be xord with the old one, which is
-; not a behavior anyone should be wanting.)
+; not a behavior anyone should be wanting.)  In debug mode this error
+; is detected, however.
 ;
 ;**********************************************************************
 
@@ -135,15 +140,17 @@ define NILCC %Exp
 ;**********************************************************************
 ; Aligned
 ;
-; Checks to see that the given pointer is aligned on the boundary
-; we assume (currently 8 bytes, which GNU malloc() seems to enforce)
+; Checks to see that the given pointer is aligned on the boundary we
+; require to hold the tag field (currently 8 bytes, which GNU malloc()
+; seems to enforce).
 ;
 ;**********************************************************************
 
 define NILCC i1
 @Aligned(i8* %ptr)
 {
-    ; Easily expressed in terms of the tag functions defined above
+    ; Easily expressed in terms of the tag functions defined above;
+    ; a sufficiently aligned pointer is one whose tag field is zero.
     %exp = ptrtoint i8* %ptr to %Exp
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
     %isZero = icmp eq %Tag %tag, 0
@@ -176,9 +183,7 @@ define NILCC %Exp
         ; For now, assert that it isn't so it can't silently do The Wrong
         ; Thing
         %notNull = icmp ne %c_char* %str, null
-        ; calling the raw function because until the semantics are settled
-        ; this should not be permitted no matter what NDEBUG says
-        call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
+        assert(%notNull)
 
         #ifndef DEBUG
         ; Also it obviously must be aligned
@@ -238,9 +243,7 @@ define NILCC %Exp
         ; For now, assert that it isn't so it can't silently do The Wrong
         ; Thing
         %notNull = icmp ne %nil_cell* %cell, null
-        ; calling the raw function because until the semantics are settled
-        ; this should not be permitted no matter what NDEBUG says
-        call ccc void @assert_impl(i1 %notNull, %c_int __LINE__)
+        assert(%notNull)
 
         #ifndef DEBUG
         ; Also it obviously must be aligned
@@ -292,14 +295,6 @@ define NILCC %nil_cell*
 define NILCC i1
 @Atom(%Exp %exp)
 {
-    ; Test for nil, which is an atom as well as a list
-    %nilp = icmp eq %Exp %exp, NIL
-    br i1 %nilp, label %IsNil, label %NotNil
-
-IsNil:
-    ret i1 true
-
-NotNil:
     ; Implemented in a way that allows expansion to other types of
     ; atoms besides symbols
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
@@ -312,11 +307,11 @@ NotNil:
 define NILCC %Exp
 @nil_car(%Exp %exp)
 {
-        ;FIXME: report errors instead of dying
-        %atomp = call NILCC i1 @Atom(%Exp %exp)
-        ; FIXME: need an assert_false facility
-        %listp = xor i1 %atomp, 1
-        call NILCC void @assert_impl(i1 %listp, %c_int __LINE__)
+        ;FIXME: report errors instead of dying.  Not
+        ; within #ifndef NDEBUG because until fixed
+        ; this *will* happen and is not acceptable.
+        %cellp = call NILCC i1 @Cell(%Exp %exp)
+        assert(%cellp)
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %carPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 0
@@ -330,10 +325,8 @@ define NILCC %Exp
 @nil_cdr(%Exp %exp)
 {
         ;FIXME: report errors instead of dying
-        %atomp = call NILCC i1 @Atom(%Exp %exp)
-        ; FIXME: need an assert_false facility
-        %listp = xor i1 %atomp, 1
-        call NILCC void @assert_impl(i1 %listp, %c_int __LINE__)
+        %cellp = call NILCC i1 @Cell(%Exp %exp)
+        assert(%cellp)
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %cdrPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 1
@@ -351,6 +344,7 @@ define NILCC %Exp
     %size = ptrtoint %nil_cell* %sizeAddr to %c_size_t
 
     ; Get a new cell
+    ; FIXME: put all of this junk into the memory module
     %newMem = call ccc i8* @malloc(%c_size_t %size)
     #ifndef NDEBUG
     ; Check that we have memory
@@ -373,6 +367,24 @@ define NILCC %Exp
     %newExp = call NILCC %Exp @nil_cell2Exp(%nil_cell* %newCell)
 
     ret %Exp %newExp
+}
+
+;**********************************************************************
+; Cell
+;
+; Returns true if the expression is a (non-nil) cell.
+;
+;**********************************************************************
+
+define NILCC i1
+@Cell(%Exp %exp)
+{
+    ; Implemented in a way that allows expansion to other types of
+    ; atoms besides symbols
+    %tag = call NILCC %Tag @GetTag(%Exp %exp)
+    %cellp = icmp eq %Tag %tag, CELL_TAG
+
+    ret i1 %cellp
 }
 
 ;**********************************************************************
@@ -444,22 +456,22 @@ define NILCC void
 
     switch %Tag %tag, label %CantHappen [
 
-        %Tag SYMBOL_TAG, label %Symbol
-        %Tag   CELL_TAG, label %CellTag
+        %Tag SYMBOL_TAG, label %SymbolTag
+        %Tag   CELL_TAG, label %CantHappen
     ]
 
 CantHappen:
     cant_happen()
     br label %CantHappen
 
-Symbol:
+SymbolTag:
+    %isNil = icmp eq %Exp %exp, NIL
+    br i1 %isNil, label %IsNil, label %IsSymbol
+
+IsSymbol:
     %str = call NILCC %c_char* @Exp2str(%Exp %exp)
     call ccc %c_int @putstring(%c_char* %str)
     ret void
-
-CellTag:
-    %isNil = icmp eq %Exp %exp, NIL
-    br i1 %isNil, label %IsNil, label %CantHappen
 
 IsNil:
     call ccc %c_int @putchar(%c_int ASCII_LPAREN)
@@ -478,7 +490,7 @@ define NILCC void
 @PrintCDR(%Exp %exp)
 {
     %notNil = icmp ne %Exp %exp, NIL
-    br i1 %notNil, label %IsCell, label %IsNil
+    br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:
     ; End of list, nothing to do (which is why we handle this case
@@ -503,236 +515,5 @@ IsCell:
     %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
     call NILCC void @PrintCDR(%Exp %cdr)
     ret void
-}
-
-;**********************************************************************
-; Strings
-;
-; A simple little module that ensures that every string *value* is
-; stored in a single unique location, vital for Lisp to work with any
-; kind of efficiency at all (among other things, this means we can
-; test for symbol equality with a simple pointer compare).  A simple
-; linked list is more than sufficient for now.
-;
-; Note that as far as this module is concerned "" is a perfectly valid
-; symbol. :-)
-;
-;**********************************************************************
-
-@pStringList = internal global %Exp NIL
-
-;**********************************************************************
-; PrintAllStrings
-;
-; A debugging routine that prints the list of strings.
-;
-;**********************************************************************
-
-define NILCC void
-@PrintAllStrings()
-{
-    %stringList = load %Exp* @pStringList
-    call NILCC void @PrintExp(%Exp %stringList)
-    ret void
-}
-
-;**********************************************************************
-; UniqueString
-;
-; Returns a pointer to a unique string with the same contents as the
-; given string, allocating if necessary.  Note that the caller can't
-; free() the string as we maintain an internal pointer to it.  That's
-; what garbage collection is for.
-;
-;**********************************************************************
-
-; Message for monitoring the interpreter behavior
-#define NEW_LEN 6
-@newArray = internal constant [NEW_LEN x %c_char] c"(add)\00"
-
-
-define NILCC %c_char*
-@UniqueString(%c_char* %string)
-{
-    ; Is there already such a string in the list?
-    %existingString = call NILCC %c_char* @FindString(%c_char* %string)
-
-    #ifndef NDEBUG
-    ; For paranoia's sake, in debugging mode we'll do the same search
-    ; all over again with the recursive implementation and assert that
-    ; precisely the same pointer is obtained.
-    %listHead = load %Exp* @pStringList
-    %alternateString = call NILCC %c_char* @FindStringR(%Exp %listHead,
-                                                        %c_char* %string)
-    %equal = icmp eq %c_char* %existingString, %alternateString
-    assert(%equal)
-    #endif
-
-    %exists = icmp ne %c_char* %existingString, null
-    br i1 %exists, label %ReturnOldString, label %GetNewString
-
-ReturnOldString:
-    ; If so, return it.
-    ret %c_char* %existingString
-
-GetNewString:
-#if 1
-; Some monitoring output we'll leave on for now
-%newStr = getelementptr [NEW_LEN x %c_char]* @newArray, i64 0, i64 0
-call ccc %c_int @putstring(%c_char* %newStr)
-#endif
-    ; If not, allocate a new string with that value...
-    %newString = call ccc %c_char* @strdup(%c_char* %string)
-    #ifndef NDEBUG
-    ; Did we get it?
-    %gotString = icmp ne %c_char* %newString, null
-    assert(%gotString)
-    #endif
-
-    ; ...add it to the list...
-    call NILCC void @PushString(%c_char* %newString)
-
-    ; ...and return it.
-    ret %c_char* %newString
-}
-
-;**********************************************************************
-; PushString
-;
-; Adds the given string to the head of the list without checking to
-; see if it is already present.
-;
-;**********************************************************************
-
-define NILCC void
-@PushString(%c_char* %string)
-{
-    %car = call NILCC %Exp @str2Exp(%c_char* %string)
-
-    %cdr = load %Exp* @pStringList
-
-    %newHead = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
-
-    ; Make it the new head
-    store %Exp %newHead, %Exp* @pStringList
-
-    ret void
-}
-
-;**********************************************************************
-; FindString
-;
-; Returns a pointer to the unique string in the list with the same
-; contents as the given string, if it exists.  Otherwise, return null.
-;
-; Written in imperative style--this is LLVM, not lisp.  However, it
-; might be educational to see it in recursive style, and LLVM claims
-; to be able to optimize tail calls.
-;
-;**********************************************************************
-
-define NILCC %c_char*
-@FindString(%c_char* %searchString)
-{
-        ; Paranoia--disallow calls with null (empty strings are fine)
-        #ifndef NDEBUG
-        %haveInput = icmp ne %c_char* %searchString, null
-        assert(%haveInput)
-        #endif
-
-    ; Local variable
-    %pThisCell = alloca %Exp
-
-    ; pThisCell = &ListHead
-    %listHead = load %Exp* @pStringList
-    store %Exp %listHead, %Exp* %pThisCell
-    br label %Loop
-
-Loop:
-    ; while (thisCell != nil)
-    %thisCell = load %Exp* %pThisCell
-    %notNil = icmp ne %Exp %thisCell, NIL
-    br i1 %notNil, label %BeginLoop, label %EndLoop
-
-    BeginLoop:
-        ; if ( car(thisCell) == searchString)
-        ; FIXME: should use the LLVM 2.6 inbounds keyword
-        %car = call NILCC %Exp @nil_car(%Exp %thisCell)
-
-        ; Do the compare--note that we *can't* do this with anything like
-        ; eq, because we already need uniqueness to make the
-        ; pointer compare in eq work
-        %thisString = call NILCC %c_char* @Exp2str(%Exp %car)
-        %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
-                                       %c_char* %searchString)
-        %equal = icmp eq %c_int %cmp, 0
-        br i1 %equal, label %BeginIf, label %EndIf
-
-        BeginIf:
-
-            ; return this string
-            ret %c_char* %thisString
-
-        EndIf:
-        ; thisCell = cdr(thisCell)
-        %cdr = call NILCC %Exp @nil_cdr(%Exp %thisCell)
-        store %Exp %cdr, %Exp* %pThisCell
-        br label %Loop
-
-EndLoop:
-    ; We didn't find it, return null
-    ret %c_char* null
-}
-
-;**********************************************************************
-; FindStringR
-;
-; Precisely the same semantics as FindString, but written in recursive
-; style for comparison purposes.  We've helped LLVM compile it to an
-; iterative process by explicitly specifying a tail call.
-;
-;**********************************************************************
-
-define NILCC %c_char*
-@FindStringR(%Exp %list, %c_char* %searchString)
-{
-        ; Paranoia--disallow calls with null (empty strings are fine)
-        #ifndef NDEBUG
-        %haveInput = icmp ne %c_char* %searchString, null
-        assert(%haveInput)
-        #endif
-
-    %notNil = icmp ne %Exp %list, NIL
-    br i1 %notNil, label %NotNil, label %IsNil
-
-IsNil:
-    ; We didn't find it, return null
-    ret %c_char* null
-
-NotNil:
-    ; if ( car(list) == searchString)
-    ; FIXME: should use the LLVM 2.6 inbounds keyword
-    %car = call NILCC %Exp @nil_car(%Exp %list)
-
-    ; Do the compare--note that we *can't* do this with anything like
-    ; eq, because this is the direct string compare that makes the
-    ; pointer compare in eq work
-    %thisString = call NILCC %c_char* @Exp2str(%Exp %car)
-    %cmp = call ccc %c_int @strcmp(%c_char* %thisString,
-                                   %c_char* %searchString)
-    %equal = icmp eq %c_int %cmp, 0
-    br i1 %equal, label %StringsEqual, label %StringsNotEqual
-
-StringsEqual:
-
-    ; return this string
-    ret %c_char* %thisString
-
-StringsNotEqual:
-    ; FindString( cdr(list) )
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %list)
-    %answer = tail call NILCC %c_char* @FindStringR(%Exp %cdr,
-                                                    %c_char* %searchString)
-    ret %c_char* %answer
 }
 

@@ -1,0 +1,23 @@
+#ifndef MEMORY_LLH
+#define MEMORY_LLH
+
+;**********************************************************************
+; memory.llh
+;
+; Public declarations for the memory module.
+;
+; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "system.llh"
+
+    ; String uniqueifying
+
+    declare NILCC void     @PrintAllStrings()
+    declare NILCC %c_char* @UniqueString(%c_char* %string)
+    declare NILCC void     @PushString(%c_char* %string)
+    declare NILCC %c_char* @FindString(%c_char* %searchString)
+
+#endif

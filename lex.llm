@@ -197,11 +197,13 @@ define NILCC %c_char*
 define NILCC void
 @AppendLexemeChar(%c_int %char_int)
 {
+    #ifndef NDEBUG
     ; Sanity test input to ensure it is within 0-255
     %nonNegative = icmp sge %c_int %char_int, 0
     assert(%nonNegative)
     %eightBits = icmp slt %c_int %char_int, 256
     assert(%eightBits)
+    #endif
 
     ; Obtain c_char value
     %char = trunc %c_int %char_int to %c_char

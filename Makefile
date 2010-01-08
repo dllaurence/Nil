@@ -20,13 +20,15 @@
 
 all : nil
 
-nil : nil.o system_c.o system_ll.o lex.o exp.o
+nil : nil.o system_c.o system_ll.o lex.o exp.o memory.o
 
-nil.ll : system.llh c_defs.llh nil.llh lex.llh exp.llh
+nil.ll :    system.llh c_defs.llh nil.llh lex.llh exp.llh
 
-lex.ll : system.llh c_defs.llh nil.llh lex.llh
+lex.ll :    system.llh c_defs.llh nil.llh lex.llh
 
-exp.ll : system.llh c_defs.llh nil.llh exp.llh
+exp.ll :    system.llh c_defs.llh nil.llh exp.llh memory.llh
+
+memory.ll : system.llh c_defs.llh nil.llh memory.llh exp.llh
 
 system_ll.ll : system.llh c_defs.llh
 
