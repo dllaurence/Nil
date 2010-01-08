@@ -13,14 +13,6 @@
 
 #include "nil.llh"
 
-    ; Again LEX defines its own values independent of system--this is
-    ; tedious but safer because it decouples the code.
-    #define LEX_EOF        -1
-    #define LEX_IOERROR    -2
-    #define LEX_BADCHAR    -3
-    #define LEX_SYMBOL     -4
-
-
     declare NILCC %c_int @NextLexeme()
 
     ; Private, for debugging only--must match the private declarations

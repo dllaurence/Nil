@@ -49,5 +49,24 @@
 
     %Exp = type %Word
 
+; Codes common to multiple modules
+
+    ; Nil defines its own values independent of what libc or system
+    ; return--this is tedious but safer because it decouples the code.
+
+    ; I/O Exceptions
+    #define NIL_EOF           -1
+    #define NIL_IOERROR       -2
+
+    ; Lexer Exceptions
+    #define NIL_BADCHAR       -3
+
+    ; Parser Exceptions
+    #define NIL_EXTRA_RPAREN  -4
+
+    ; Normal Parsed Expressions
+    #define NIL_SYMBOL        -5
+    #define NIL_CELL          -6
+
 #endif
 

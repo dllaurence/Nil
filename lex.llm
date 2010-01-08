@@ -78,9 +78,9 @@ Loop:
             ; Throw away whitespace
             switch %c_int %currentChar, label %Start_TokenChar [
 
-                %c_int LEX_EOF,        label %AcceptNonprinting
-                %c_int LEX_IOERROR,    label %AcceptNonprinting
-                %c_int LEX_BADCHAR,    label %AcceptNonprinting
+                %c_int NIL_EOF,        label %AcceptNonprinting
+                %c_int NIL_IOERROR,    label %AcceptNonprinting
+                %c_int NIL_BADCHAR,    label %AcceptNonprinting
 
                 %c_int ASCII_TAB,      label %Loop
                 %c_int ASCII_NEWLINE,  label %AcceptChar
@@ -103,9 +103,9 @@ Loop:
 
             switch %c_int %currentChar, label %Token_AppendChar [
 
-                %c_int LEX_EOF,        label %AcceptSymbol
-                %c_int LEX_IOERROR,    label %AcceptSymbol
-                %c_int LEX_BADCHAR,    label %AcceptSymbol
+                %c_int NIL_EOF,        label %AcceptSymbol
+                %c_int NIL_IOERROR,    label %AcceptSymbol
+                %c_int NIL_BADCHAR,    label %AcceptSymbol
 
                 %c_int ASCII_TAB,      label %AcceptSymbol
                 %c_int ASCII_NEWLINE,  label %AcceptSymbol
@@ -136,7 +136,7 @@ AcceptSymbol:
     ; Add a null-terminator for the convenience of NextToken().
     call NILCC void @AppendLexemeChar(%c_int 0)
 
-    ret %c_int LEX_SYMBOL
+    ret %c_int NIL_SYMBOL
 }
 
 ;**********************************************************************
@@ -242,9 +242,9 @@ Done:
 ; GetValidChar (private)
 ;
 ; Simplifies the lexer by letting us filter out illegal characters.
-; Returns the ASCII value for legal character, LEX_EOF for end-of-file,
-; LEX_IOERROR on a (surprise!) I/O error, or prints an error message
-; and returns LEX_BADCHAR for bad characters.
+; Returns the ASCII value for legal character, NIL_EOF for end-of-file,
+; NIL_IOERROR on a (surprise!) I/O error, or prints an error message
+; and returns NIL_BADCHAR for bad characters.
 ;
 ;**********************************************************************
 
@@ -280,14 +280,14 @@ AcceptNextChar:
 ; taken care of elementary error reporting
 
 OnEOF:
-    ret %c_int LEX_EOF
+    ret %c_int NIL_EOF
 
 ; Handle Exceptional Conditions
 
 BadChar:
-    ret %c_int LEX_BADCHAR
+    ret %c_int NIL_BADCHAR
 
 OnIOError:
-    ret %c_int LEX_IOERROR
+    ret %c_int NIL_IOERROR
 }
 

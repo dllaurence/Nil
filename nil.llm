@@ -55,6 +55,8 @@
 ; by the parser from the lexemes identified by NextLexeme().  Part of
 ; the expression module because it knows about expression types.
 ;
+; FIXME: figure out how to return the structure properly.
+;
 ;**********************************************************************
 
 %Token = type {%c_int, %Exp}
@@ -72,15 +74,15 @@ define NILCC void
 
     switch %c_int %tokenType, label %CantHappen [
 
-        %c_int LEX_EOF,        label %ReturnCode
-        %c_int LEX_IOERROR,    label %ReturnCode
-        %c_int LEX_BADCHAR,    label %ReturnCode
+        %c_int NIL_EOF,        label %ReturnCode
+        %c_int NIL_IOERROR,    label %ReturnCode
+        %c_int NIL_BADCHAR,    label %ReturnCode
 
         %c_int ASCII_NEWLINE,  label %ReturnCode
 
         %c_int ASCII_LPAREN,   label %ReturnCode
         %c_int ASCII_RPAREN,   label %ReturnCode
-        %c_int LEX_SYMBOL,     label %ReturnSymbol
+        %c_int NIL_SYMBOL,     label %ReturnSymbol
     ]
 
 CantHappen:
@@ -88,7 +90,7 @@ CantHappen:
     br label %CantHappen
 
 ReturnCode:
-    store %Exp 0, %Exp* %expFieldPtr
+    store %Exp NIL, %Exp* %expFieldPtr
     ret void
 
 ReturnSymbol:
@@ -174,10 +176,11 @@ ReadChar:
 
     switch %c_int %code, label %PrintChar [
 
-        %c_int LEX_EOF,      label %Exit
-        %c_int LEX_IOERROR,  label %ExitIOError
-        %c_int LEX_BADCHAR,  label %WarnBadChar
-        %c_int LEX_SYMBOL,   label %PrintSymbol
+        %c_int NIL_EOF,      label %Exit
+        %c_int NIL_IOERROR,  label %ExitIOError
+        %c_int NIL_BADCHAR,  label %WarnBadChar
+        %c_int NIL_SYMBOL,   label %PrintExp
+        %c_int NIL_CELL,     label %PrintExp
 
         %c_int ASCII_NEWLINE,  label %NewLine
     ]
@@ -203,11 +206,10 @@ WarnBadChar:
     store i1 1, i1* %hadInputPtr
     br label %ReadChar
 
-PrintSymbol:
+PrintExp:
     %expPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
-    %symbolExp = load %Exp* %expPtr
-    ;call ccc %c_int @putstring(%c_char* %lexeme)
-    call NILCC void @PrintExp(%Exp %symbolExp)
+    %exp = load %Exp* %expPtr
+    call NILCC void @PrintExp(%Exp %exp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
     br label %ReadChar

@@ -5,11 +5,18 @@
 ;
 ; FIXME: most of these routines are general implementations that
 ; sanity-check their arguments.  But when used internally the calling
-; code often knows that the checks are not necessary.  Those
-; checks could someday be optimized away by creating unchecked versions
-; for internal use.  Also, we might be able to save a comparison by
-; having a separate internal tag for nil, though that may not save
-; anything noticable.
+; code often knows that the checks are not necessary.  Those checks
+; could someday be optimized away by creating unchecked versions for
+; internal use, since both the parser and the string uniqueifier always
+; know the run-time type of their objects.
+;
+; Also, we might be able to save a comparison or two by having a separate
+; internal tag for nil and/or tricky choices for the bit patterns of the
+; tag values (testing a subfield gives us a test for a set of types and
+; if arranged properly could replace a common series of tests for
+; membership in one of several types that will be treated the same).  The
+; most likely place this would be useful would be having a single-compare
+; test for both "atom, including nil" and "atom but not nil."
 ;
 ; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
