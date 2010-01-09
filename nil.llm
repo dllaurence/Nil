@@ -108,116 +108,117 @@ ReturnSymbol:
 ;
 ;**********************************************************************
 
-;**********************************************************************
-; NextExp (public)
-;
-; The Nil parser.
-;
-;**********************************************************************
-
-define NILCC void
-@NextExp(%Token* %retTokenPtr)
-{
-    ; Temporary space for the token
-    %tokenPtr = alloca %Token
-    %typeFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
-    %expFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
-
-    ; We'll need these too
-    %retTypeFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 0
-    %retExpFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 1
-    br label %ReadToken
-
-ReadToken:
-    call NILCC void @NextToken(%Token* %tokenPtr)
-
-    %thisType = load %c_int* %typeFieldPtr
-
-    switch %c_int %thisType, label %CantHappen [
-
-        %c_int NIL_EOF,        label %Exception
-        %c_int NIL_IOERROR,    label %Exception
-        %c_int NIL_BADCHAR,    label %Exception
-
-        %c_int ASCII_NEWLINE,  label %Exception ; !!!
-
-        %c_int ASCII_LPAREN,   label %BeginList
-        %c_int ASCII_RPAREN,   label %Exception
-        %c_int NIL_SYMBOL,     label %ReturnToken
-        %c_int NIL_CELL,       label %CantHappen
-    ]
-
-CantHappen:
-    cant_happen()
-    br label %CantHappen
-
-Exception:
-    ; Die for now, until the normal logic is correct
-    call ccc void @abort()
-    br label %CantHappen
-
-BeginList:
-    call NILCC void @ParseList(%Token* %tokenPtr)
-    br label %ReturnToken
-
-EndList:
-    store %c_int NIL_EXTRA_RPAREN, %c_int* %typeFieldPtr
-    br label %ReturnToken
-
-ReturnToken:
-    %token = load %Token* %tokenPtr
-    store %Token %token, %Token* %retTokenPtr
-    ret void
-}
-
-;**********************************************************************
-; ParseList (private)
-;
-;**********************************************************************
-
 #define CONTPROMPTARRAY_LEN 5
 @contPromptArray = internal constant [CONTPROMPTARRAY_LEN x %c_char] c"--> \00"
 
-define NILCC void
-@ParseList(%Token* %retTokenPtr)
-{
-    ; Temporary space for the token
-    %tokenPtr = alloca %Token
-    %typeFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
-    %expFieldPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
+;**********************************************************************
+; ReadExp (public)
+;
+; The Nil parser, implemented as a mutually recursive pair of functions.
+;
+;**********************************************************************
 
-    ; We'll need these too
-    %retTypeFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 0
-    %retExpFieldPtr = getelementptr %Token* %retTokenPtr, i32 0, i32 1
-    br label %ReadToken
+define NILCC %Token
+@ReadExp()
+{
+    br label ReadToken
 
 ReadToken:
-    call NILCC void @NextToken(%Token* %tokenPtr)
+    %token = call NILCC %Token @ReadToken()
 
-    %thisType = load %c_int* %typeFieldPtr
+    %tokenType = extractvalue %Token %token, 0
 
-    switch %c_int %thisType, label %CantHappen [
+    switch %c_int %tokenType, label %CantHappen [
 
-        %c_int NIL_EOF,        label %Exception
-        %c_int NIL_IOERROR,    label %Exception
-        %c_int NIL_BADCHAR,    label %Exception
-
-        %c_int ASCII_NEWLINE,  label %Exception ; !!!
+        %c_int NIL_CELL,       label %CantHappen  ; Noted explicitly
+        %c_int NIL_SYMBOL,     label %ReturnToken
 
         %c_int ASCII_LPAREN,   label %BeginList
         %c_int ASCII_RPAREN,   label %EndList
-        %c_int NIL_SYMBOL,     label %Symbol
-        %c_int NIL_CELL,       label %CantHappen
+
+        %c_int ASCII_NEWLINE,  label %Newline
+
+        %c_int NIL_EXCEPTION,  label %ReturnToken
     ]
 
 CantHappen:
     cant_happen()
     br label %CantHappen
 
-Exception:
-    ; Die for now, until the normal logic is correct
-    call ccc void @abort()
+ReturnToken:
+    ret %Token %token
+
+BeginList:
+    %listToken = call NILCC %Token @ReadList()
+    ret %Token %listToken
+
+EndList:
+    %lParenToken = insertvalue %Token {%c_int NIL_EXCEPTION, %Word undef},
+                                                   %Word NIL_EXTRA_LPAREN, 1
+     ret %Token %lParenToken
+
+Newline:
+    %promptStr = getelementptr [CONTPROMPTARRAY_LEN x %c_char]* @contPromptArray,
+                                                                i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %promptStr)
+    br label %ReadToken
+}
+
+;**********************************************************************
+; ReadList (private)
+;
+; Warning: here there be tygers.  Recursive tygers.
+;
+; Also, some incidental complification comes from the absence of a
+; nested block structure.
+;
+; That said, nothing will make the recursion entirely simple.
+;
+;**********************************************************************
+
+define NILCC %Token
+@ReadList()
+{
+    br label %ReadToken
+
+ReadToken:
+    %token = call NILCC %Token @ReadExp()
+}
+
+#if 0
+define NILCC %Token
+@ReadList()
+{
+    br label %ReadToken
+
+ReadToken:
+    %token = call NILCC %Token @ReadToken()
+
+    %tokenType = extractvalue %Token %token, 0
+
+    switch %c_int %tokenType, label %CantHappen [
+
+        %c_int NIL_CELL,       label %CantHappen  ; Noted explicitly
+      X %c_int NIL_SYMBOL,     label %Symbol
+
+      X %c_int ASCII_LPAREN,   label %BeginList
+        %c_int ASCII_RPAREN,   label %EndList
+
+        %c_int ASCII_NEWLINE,  label %Newline
+
+        %c_int NIL_EXCEPTION,  label %Exception
+    ]
+
+CantHappen:
+    cant_happen()
     br label %CantHappen
+
+EndList:
+    ; We're calling 'NIL' a symbol here, because it is the non-cons
+    ; cell nature of nil that matters for parsing
+    %nilToken = insertvalue %Token {%c_int NIL_SYMBOL, %Word undef},
+                                                      %Word NIL_VALUE, 1
+    ret %Token %nilToken
 
 Newline:
     %promptStr = getelementptr [CONTPROMPTARRAY_LEN x %c_char]* @contPromptArray,
@@ -225,35 +226,104 @@ Newline:
     call ccc %c_int @putstring(%c_char* %promptStr)
     br label %ReadToken
 
-BeginList:
-    call NILCC void @ParseList(%Token* %tokenPtr)
-    %car = load %Exp* %expFieldPtr
-    call NILCC void @ParseList(%Token* %tokenPtr)
-    %cdr = load %Exp* %expFieldPtr
-    br label %ReturnToken
-
-EndList:
-    ; We're calling 'NIL' a symbol here, which is sort of true but
-    ; indicates that 'symbol' really means something like 'atom'
-    store %c_int NIL_SYMBOL, %c_int* %typeFieldPtr
-    store %Exp NIL, %Exp* %tokenPtr
-    br label %ReturnToken
+Exception:
+    ; FIXME: we're throwing these away, so optimize this into a simple
+    ; loop (jumping right back to the Exception label?)
+    call NILCC %Token @ReadList() ; We only keep the first exception
+    ret %Token %token
 
 Symbol:
-    %car = load %Exp* %expFieldPtr
-    call NILCC void @ParseList(%Token* %tokenPtr)
-    FIXME: switch on what ParseList returned
-    %cdr = load %Exp* %expFieldPtr
-    %cell = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
-    store %c_int NIL_CELL, %c_int* %retTypeFieldPtr
-    store %Exp %cell, %Exp* %retExpFieldPtr
-    ret void
+    %car = extractvalue %Token %token, 1
 
-ReturnToken:
-    %token = load %Token* %tokenPtr
-    store %Token %token, %Token* %retTokenPtr
-    ret void
+    %retToken = call NILCC %Token @ReadCDR(%Exp %car)
+    ret %Token %retToken
+
+BeginList:
+    %carToken = call NILCC %Token @ReadList()
+    %carType = extractvalue %Token %carToken, 0
+    %car = extractvalue %Token %carToken, 1
+
+    ; Likewise, ReadList can only return one of these three types
+    switch %c_int %carType, label %CantHappen [
+
+        %c_int NIL_EXCEPTION, label %DropCDR
+        %c_int NIL_SYMBOL,    label %CARNil ; only if nil
+        %c_int NIL_CELL,      label %CAR_OK
+    ]
+
+DropCDR:
+    ; FIXME: we're throwing these away, so optimize this into a simple
+    ; loop (jumping right back to the Exception label?)
+    call NILCC %Token @ReadList() ; drop it on the floor
+    ret %Token %carToken
+
+CARNil:
+    #ifndef NDEBUG
+    ; We received a symbol--car had better be nil
+    %nilCar = extractvalue %Token %carToken, 1
+    %carIsNil = icmp eq %Exp %nilCar, NIL_VALUE
+    assert(%carIsNil)
+    #endif
+    br CAR_OK
+
+CAR_OK:
+    %retToken = call NILCC %Token @ReadCDR(%Exp %car)
+    ret %Token %retToken
 }
+#endif
+
+;**********************************************************************
+; ReadCDR (private)
+;
+; Warning: here there be tygers.  Recursive tygers.
+;
+; Helper routine factored out of ReadList.  We have a non-exceptional
+; car expression, so read the cdr and cons.
+;
+;**********************************************************************
+
+define NILCC %Token
+@ReadCDR(%Exp %car)
+{
+    %cdrToken = call NILCC %Token @ReadList()
+
+    %cdrType = extractvalue %Token %cdrToken, 0
+
+    ; ReadExp can only return one of these three types
+    switch %c_int %cdrType, label %CantHappen [
+
+        %c_int NIL_EXCEPTION, label %DropCAR
+        %c_int NIL_SYMBOL,    label %CDRNil     ; only possible if nil
+        %c_int NIL_CELL,      label %ReturnCons
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+DropCAR:
+    ret %Token %cdrToken
+}
+
+CDRNil:
+    #ifndef NDEBUG
+    ; We received a symbol--cdr had better be nil
+    %nilCdr = extractvalue %Token %cdrToken, 1
+    %cdrIsNil = icmp eq %Exp %nilCdr, NIL_VALUE
+    assert(%cdrIsNil)
+    #endif
+    br label %ReturnCons
+
+ReturnCons:
+    ; We have a non-exceptional cdr expression, so just cons
+    ; and return.
+    %cdr = extractvalue %Token %cdrToken, 1
+    %cell = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+    %cellToken = insertvalue %Token {%c_int NIL_CELL, %Word undef},
+                                                      %Word %cell, 1
+    ret %Token %cell
+}
+
 #endif
 
 ;**********************************************************************
