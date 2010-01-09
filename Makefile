@@ -7,9 +7,17 @@
 #**********************************************************************
 
 LPPFLAGS = # -D NDEBUG
+LLOPTFLAGS = -O3
+LLCFLAGS = -O3
 
-%.s : %.bc
-	llc -f $<
+%.s : %.optbc
+	llc $(LLCFLAGS) -f $< -o $@
+
+%.optbc : %.bc
+	opt $(LLOPTFLAGS) $< -o $@
+
+%.optdis.ll : %.optbc
+	llvm-dis -f $< -o $@
 
 %.dis.ll : %.bc
 	llvm-dis -f $< -o $@
@@ -28,7 +36,7 @@ nil.ll :    system.llh c_defs.llh nil.llh lex.llh exp.llh
 
 lex.ll :    system.llh c_defs.llh nil.llh lex.llh
 
-exp.ll :                          nil.llh exp.llh memory.llh
+exp.ll :               c_defs.llh nil.llh exp.llh memory.llh
 
 memory.ll : system.llh c_defs.llh nil.llh memory.llh exp.llh
 
@@ -38,5 +46,5 @@ c_defs.llh : c_defs
 	./c_defs > c_defs.llh
 
 clean :
-	rm -f nil c_defs c_defs.llh *.bc *.ll *.s *.o
+	rm -f nil c_defs c_defs.llh *.bc *.optbc *.s *.o testInline *.ll
 

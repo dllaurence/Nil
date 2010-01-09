@@ -99,6 +99,25 @@ define ccc void
 }
 
 ;**********************************************************************
+; putptr
+;
+;**********************************************************************
+
+#define PTRFORMAT_LEN 3
+@ptrFormat = internal constant [PTRFORMAT_LEN x %c_char] c"%p\00"
+%ptrFormatType = type [PTRFORMAT_LEN x %c_char]
+
+define ccc void
+@putptr(i8* %ptr)
+{
+    %formatString = getelementptr %intFormatType* @ptrFormat, i64 0, i64 0
+
+    call ccc %c_int (%c_char*, ...)* @printf(%c_char* %formatString, i8* %ptr)
+
+    ret void
+}
+
+;**********************************************************************
 ; putstring
 ;
 ; Like puts(), but without the extra newline.  Basically eliminates the

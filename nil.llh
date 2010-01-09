@@ -59,14 +59,21 @@
     #define NIL_IOERROR       -2
 
     ; Lexer Exceptions
-    #define NIL_BADCHAR       -3
+    #define NIL_EXCEPTION     -11
+    #define NIL_BADCHAR       -12
 
     ; Parser Exceptions
-    #define NIL_EXTRA_RPAREN  -4
+    #define NIL_EXTRA_RPAREN  -21
 
     ; Normal Parsed Expressions
-    #define NIL_SYMBOL        -5
-    #define NIL_CELL          -6
+    #define NIL_SYMBOL        -31
+    #define NIL_CELL          -32
+
+; The token form needed by the lexer and parser, again put here to
+; reduce the mutual #include dependencies.  (Structurally this is
+; similar to a cell, but conceptually they are unrelated types.)
+
+    %Token = type {%c_int, %Word}
 
 #endif
 

@@ -22,13 +22,19 @@
     declare NILCC void     @AppendLexemeChar(%c_int %char_int)
     declare NILCC %c_int   @GetValidChar()
 
+; Should be large enough
+    #define LEXEMEBUFFER_SIZE 1024
+    @lexemeBuffer = internal global [LEXEMEBUFFER_SIZE x %c_char] zeroinitializer
+
+    @pBufferIndex = internal global %c_size_t 0
+
 ;**********************************************************************
-; NextLexeme (public)
+; ReadLexeme (public)
 ;
 ; The back end of the nil tokenizer.  A very simple state machine
 ; implemented directly in code, which is an instructive example of a
 ; complex function written in IR.  As the code is already complex enough
-; and verges on being "write only" code, NextLexeme only identifies
+; and verges on being "write only" code, ReadLexeme only identifies
 ; significant character sequences (lexemes) in the source, while
 ; NextToken does the actual construction of the corresponding token
 ; required by the parser.
@@ -41,8 +47,8 @@
 ;
 ;**********************************************************************
 
-define NILCC %c_int
-@NextLexeme()
+define NILCC %Token
+@ReadLexeme()
 {
     ; Reminder: for optimization purposes all alloca calls should happen
     ; in the first block
@@ -123,11 +129,16 @@ Loop:
             call NILCC void @AppendLexemeChar(%c_int %currentChar)
             br label %Loop
 
-AcceptNonprinting: ; Only separate from AcceptChar for debugging purposes
-    ret %c_int %currentChar
+AcceptNonprinting: ; Only separate from AcceptChar in case we want to
+                   ; add some debugging output
+    %struct1 = insertvalue %Token {%c_int 0, %Word 0},
+                                               %c_int %currentChar, 0
+    ret %Token %struct1
 
 AcceptChar:
-    ret %c_int %currentChar
+    %struct2 = insertvalue %Token {%c_int 0, %Word 0},
+                                               %c_int %currentChar, 0
+    ret %Token %struct2
 
 AcceptSymbol:
     ; Push back the non-Symbol character we found for the next call
@@ -136,7 +147,12 @@ AcceptSymbol:
     ; Add a null-terminator for the convenience of NextToken().
     call NILCC void @AppendLexemeChar(%c_int 0)
 
-    ret %c_int NIL_SYMBOL
+    %lexemePtr = getelementptr [LEXEMEBUFFER_SIZE x %c_char]* @lexemeBuffer,
+                                                            i64 0, i64 0
+    %strWord = ptrtoint %c_char* %lexemePtr to %Word
+    %struct3 = insertvalue %Token {%c_int NIL_SYMBOL, %Word 0},
+                                                       %Word %strWord, 1
+    ret %Token %struct3
 }
 
 ;**********************************************************************
@@ -152,12 +168,6 @@ AcceptSymbol:
 ;
 ;**********************************************************************
 
-; Should be large enough
-#define LEXEMEBUFFER_SIZE 1024
-@lexemeBuffer = internal global [LEXEMEBUFFER_SIZE x %c_char] zeroinitializer
-
-@pBufferIndex = internal global %c_size_t 0
-
 ;**********************************************************************
 ; ClearLexemeBuffer
 ;
@@ -169,24 +179,6 @@ define NILCC void
     store %c_size_t 0, %c_size_t* @pBufferIndex
 
     ret void
-}
-
-;**********************************************************************
-; GetLexemePtr
-;
-; Warning--the Lexeme won't be null-terminated unless null is appended
-; to the buffer explicitly.
-;
-;**********************************************************************
-
-define NILCC %c_char*
-@GetLexemePtr()
-{
-
-    %pLexeme = getelementptr [LEXEMEBUFFER_SIZE x %c_char]* @lexemeBuffer,
-                                                            i64 0, i64 0
-
-    ret %c_char* %pLexeme
 }
 
 ;**********************************************************************

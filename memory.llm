@@ -95,7 +95,7 @@ define NILCC %nil_cell*
 ;**********************************************************************
 
     ; Implemented with a Lisp list from Exp
-    @pStringList = internal global %Exp NIL
+    @pStringList = internal global %Exp NIL_VALUE
 
 ;**********************************************************************
 ; PrintAllStrings
@@ -133,7 +133,6 @@ define NILCC %c_char*
     ; Is there already such a string in the list?
     %existingString = call NILCC %c_char* @FindString(%c_char* %string)
 
-#if 1
     #ifndef NDEBUG
     ; For paranoia's sake, in debugging mode we'll do the same search
     ; all over again with the recursive implementation and assert that
@@ -144,7 +143,6 @@ define NILCC %c_char*
     %equal = icmp eq %c_char* %existingString, %alternateString
     assert(%equal)
     #endif
-#endif
 
     %exists = icmp ne %c_char* %existingString, null
     br i1 %exists, label %ReturnOldString, label %GetNewString
@@ -234,7 +232,7 @@ define NILCC %c_char*
 Loop:
     ; while (thisCell != nil)
     %thisCell = load %Exp* %pThisCell
-    %notNil = icmp ne %Exp %thisCell, NIL
+    %notNil = icmp ne %Exp %thisCell, NIL_VALUE
     br i1 %notNil, label %BeginLoop, label %EndLoop
 
     BeginLoop:
@@ -285,7 +283,7 @@ define NILCC %c_char*
         assert(%haveInput)
         #endif
 
-    %notNil = icmp ne %Exp %list, NIL
+    %notNil = icmp ne %Exp %list, NIL_VALUE
     br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:

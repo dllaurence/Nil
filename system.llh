@@ -110,7 +110,10 @@
 
     ; Additional I/O code in system_ll.llm
     declare ccc %c_int @putstring(%c_char*) ; puts(), sans newline
+    ; Print an int
     declare ccc void @puti(%c_int)
+    ; Print a pointer in hexadecimal
+    declare ccc void @putptr(i8*)
 
     ; We define our own codes, whether they match or not, to decouple our
     ; code from libc.

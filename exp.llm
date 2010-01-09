@@ -416,7 +416,7 @@ define NILCC void
     br i1 %isAtom, label %IsAtom, label %IsCell
 
 IsAtom:
-    call ccc void @PrintAtom(%Exp %exp)
+    call NILCC void @PrintAtom(%Exp %exp)
     ret void
 
 IsCell:
@@ -452,7 +452,7 @@ CantHappen:
     br label %CantHappen
 
 SymbolTag:
-    %isNil = icmp eq %Exp %exp, NIL
+    %isNil = icmp eq %Exp %exp, NIL_VALUE
     br i1 %isNil, label %IsNil, label %IsSymbol
 
 IsSymbol:
@@ -476,7 +476,7 @@ IsNil:
 define NILCC void
 @PrintCDR(%Exp %exp)
 {
-    %notNil = icmp ne %Exp %exp, NIL
+    %notNil = icmp ne %Exp %exp, NIL_VALUE
     br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:

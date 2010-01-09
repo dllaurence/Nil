@@ -52,19 +52,18 @@
 ; NextToken (public)
 ;
 ; The front end of the nil tokenizer.  Constructs the tokens required
-; by the parser from the lexemes identified by NextLexeme().  Part of
+; by the parser from the lexemes identified by ReadLexeme().  Part of
 ; the expression module because it knows about expression types.
 ;
 ; FIXME: figure out how to return the structure properly.
 ;
 ;**********************************************************************
 
-%Token = type {%c_int, %Exp}
- 
 define NILCC void
 @NextToken(%Token* %token)
 {
-    %tokenType = call NILCC %c_int @NextLexeme()
+    %inToken = call NILCC %Token @ReadLexeme()
+    %tokenType = extractvalue %Token %inToken, 0
 
     ; Set up both pointers here for convenience
     %typeFieldPtr = getelementptr %Token* %token, i32 0, i32 0
@@ -90,11 +89,12 @@ CantHappen:
     br label %CantHappen
 
 ReturnCode:
-    store %Exp NIL, %Exp* %expFieldPtr
+    store %Exp NIL_VALUE, %Exp* %expFieldPtr
     ret void
 
 ReturnSymbol:
-    %lexeme = call NILCC %c_char* @GetLexemePtr()
+    %lexemeWord = extractvalue %Token %inToken, 1
+    %lexeme = inttoptr %Word %lexemeWord to %c_char*
     #ifndef NDEBUG
     ; Check to see that the string is at least one character long
     ; (since the lexer shouldn't ever produce an empty string)
