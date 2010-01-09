@@ -40,7 +40,7 @@
     ; it makes testing for a non-null cell a single comparison.  The
     ; code *does* assume this (most especially it assumes NIL does not
     ; have CELL_TAG.
-    #define   NIL SYMBOL_TAG
+    #define   NIL_VALUE SYMBOL_TAG
 
 ; Low-level manipulation of the tags embedded in the low-order bits.
     ; FIXME: these trivial functions should *always* be inlined
@@ -48,8 +48,7 @@
     declare NILCC %Exp @ClearTag(%Exp %exp)
     declare NILCC %Exp @AddTag(%Exp %exp, %Tag %tag)
     declare NILCC %Exp @SetTag(%Exp %exp, %Tag %tag)
-
-    declare NILCC i1 @Aligned(i8* %ptr)
+    declare NILCC i1 @TagIsClear(%Exp %exp)
 
 ; Conversions
 

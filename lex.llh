@@ -13,15 +13,10 @@
 
 #include "nil.llh"
 
-    declare NILCC %c_int @NextLexeme()
+    declare NILCC %Token @ReadLexeme()
 
-    ; Private, for debugging only--must match the private declarations
-    ; in lex.llm
-    #ifndef NDEBUG
     declare NILCC void     @ClearLexemeBuffer()
-    declare NILCC %c_char* @GetLexemePtr()
     declare NILCC void     @AppendLexemeChar(%c_int %char_int)
     declare NILCC %c_int   @GetValidChar()
-    #endif
 
 #endif

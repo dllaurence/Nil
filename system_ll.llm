@@ -25,14 +25,14 @@
 @cant_happen_array = internal constant [34 x %c_char]
     c"Line %d: The impossible happened!\00"
 
-define ccc void @cant_happen_impl(%c_int %line)
+define ccc void @cant_happen_impl(%c_int %line) noreturn
 {
     %pMsg = getelementptr [34 x %c_char]* @cant_happen_array, i64 0, i64 0
 
     ;%printf_cast = bitcast i32 (c_char*, ...)* @printf to i32 (c_char*, %c_int)*
     call ccc %c_int (%c_char*, ...)* @printf(%c_char* %pMsg, %c_int %line)
     call ccc %c_int @putchar(%c_int 10) ; why didn't \10 work in printf?
-    call ccc void @abort()
+    Abort()
     ret void
 }
 
@@ -43,7 +43,6 @@ define ccc void @cant_happen_impl(%c_int %line)
 
 @assert_array = internal constant [29 x %c_char] c"Line %d: Assertion failed, \10\00"
 
-; never returns
 define ccc void @assert_impl(i1 %test, %c_int %line)
 {
     br i1 %test, label %True, label %False
@@ -54,8 +53,9 @@ True:
 False:
     %pMsg = getelementptr [29 x %c_char]* @assert_array, i64 0, i64 0
     call ccc %c_int (%c_char*, ...)* @printf(%c_char* %pMsg, %c_int %line)
-    call ccc void @abort()
-    cant_happen() ; Guard; @abort had better never return
+    call ccc void @abort() noreturn
+    cant_happen() ; Guard; @abort had better never return, so if it does
+                  ; at least we'll get a warning message
     ret void
 }
 
@@ -64,7 +64,6 @@ False:
 ;
 ;**********************************************************************
 
-; never returns
 define ccc void @assert_false_impl(i1 %test, %c_int %line)
 {
     %not = xor i1 %test, 1
@@ -92,6 +91,25 @@ define ccc void
     %formatString = getelementptr %intFormatType* @intFormat, i64 0, i64 0
 
     call ccc %c_int (%c_char*, ...)* @printf(%c_char* %formatString, %c_int %integer)
+
+    ret void
+}
+
+;**********************************************************************
+; putptr
+;
+;**********************************************************************
+
+#define PTRFORMAT_LEN 3
+@ptrFormat = internal constant [PTRFORMAT_LEN x %c_char] c"%p\00"
+%ptrFormatType = type [PTRFORMAT_LEN x %c_char]
+
+define ccc void
+@putptr(i8* %ptr)
+{
+    %formatString = getelementptr %intFormatType* @ptrFormat, i64 0, i64 0
+
+    call ccc %c_int (%c_char*, ...)* @printf(%c_char* %formatString, i8* %ptr)
 
     ret void
 }

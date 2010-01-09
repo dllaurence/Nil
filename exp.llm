@@ -18,14 +18,18 @@
 ; most likely place this would be useful would be having a single-compare
 ; test for both "atom, including nil" and "atom but not nil."
 ;
+; There are interesting bitwise intrinsics (such as the count of the
+; number of trailing zeroes in an int) which might be usable to make the
+; tag manipulations go faster.  I may have relied too heavily on what
+; is available from C when I wrote the tag code.
+;
 ; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
 ; the LGPLv3.
 ;
 ;**********************************************************************
 
-#include "system.llh"
-#include "nil.llh"
 #include "exp.llh"
+#include "nil.llh"
 #include "memory.llh"
 
 ;**********************************************************************
@@ -138,20 +142,18 @@ define NILCC %Exp
 }
 
 ;**********************************************************************
-; Aligned
+; TagIsClear
 ;
-; Checks to see that the given pointer is aligned on the boundary we
-; require to hold the tag field (currently 8 bytes, which GNU malloc()
-; seems to enforce).
+; Checks to see that the given Exp has a zero tag field (and is
+; therefore convertible to a valid pointer).
+;
+; Same semantics as Aligned(), but acts on Exps and not on pointers.
 ;
 ;**********************************************************************
 
 define NILCC i1
-@Aligned(i8* %ptr)
+@TagIsClear(%Exp %exp)
 {
-    ; Easily expressed in terms of the tag functions defined above;
-    ; a sufficiently aligned pointer is one whose tag field is zero.
-    %exp = ptrtoint i8* %ptr to %Exp
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
     %isZero = icmp eq %Tag %tag, 0
 
@@ -339,22 +341,7 @@ define NILCC %Exp
 define NILCC %Exp
 @nil_cons(%Exp %car, %Exp %cdr)
 {
-    ; Compute sizeof(nil_cell)
-    %sizeAddr = getelementptr %nil_cell* null, i64 1
-    %size = ptrtoint %nil_cell* %sizeAddr to %c_size_t
-
-    ; Get a new cell
-    ; FIXME: put all of this junk into the memory module
-    %newMem = call ccc i8* @malloc(%c_size_t %size)
-    #ifndef NDEBUG
-    ; Check that we have memory
-    %gotMem = icmp ne i8* %newMem, null
-    assert(%gotMem)
-    ; Check that it is aligned
-    %aligned = call NILCC i1 @Aligned(i8* %newMem)
-    assert(%aligned)
-    #endif
-    %newCell = bitcast i8* %newMem to %nil_cell*
+    %newCell = call NILCC %nil_cell* @NewCell()
 
     ; Set the car
     %carPtr = getelementptr %nil_cell* %newCell, i32 0, i32 0
@@ -429,7 +416,7 @@ define NILCC void
     br i1 %isAtom, label %IsAtom, label %IsCell
 
 IsAtom:
-    call ccc void @PrintAtom(%Exp %exp)
+    call NILCC void @PrintAtom(%Exp %exp)
     ret void
 
 IsCell:
@@ -465,7 +452,7 @@ CantHappen:
     br label %CantHappen
 
 SymbolTag:
-    %isNil = icmp eq %Exp %exp, NIL
+    %isNil = icmp eq %Exp %exp, NIL_VALUE
     br i1 %isNil, label %IsNil, label %IsSymbol
 
 IsSymbol:
@@ -489,7 +476,7 @@ IsNil:
 define NILCC void
 @PrintCDR(%Exp %exp)
 {
-    %notNil = icmp ne %Exp %exp, NIL
+    %notNil = icmp ne %Exp %exp, NIL_VALUE
     br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:

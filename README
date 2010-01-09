@@ -4,19 +4,23 @@ README
 
 ChangeLog:
 
-    v0.0.4 * Now we have a list implementation and the list of known
-             strings uses it.
+    v0.0.4.p1 * Cleanup release preparatory to parsing--the only visible
+                change is the (+) notation for a new string added to the
+                list.
 
-    v0.0.3 * Same behavior as v0.0.2, but now the lexer is producing
-             genuine Nil symbols and the read loop is printing them
-             properly.
+    v0.0.4    * Now we have a list implementation and the list of known
+                strings uses it.
 
-    v0.0.2 * Recognizes and prints the tokens entered on the input line.
-           * Added a welcome message and user-friendlified the input
-             loop behavior.
+    v0.0.3    * Same behavior as v0.0.2, but now the lexer is producing
+                genuine Nil symbols and the read loop is printing them
+                properly.
 
-    v0.0.1 * Echoes input lines and detects EOF, illegal characters,
-             and I/O errors.
+    v0.0.2    * Recognizes and prints the tokens entered on the input line.
+                Added a welcome message and user-friendlified the input
+                loop behavior.
+
+    v0.0.1    * Echoes input lines and detects EOF, illegal characters,
+                and I/O errors.
 
 Nil is (will be, at this stage) a minimal lisp implemented directly in
 handwritten LLVM Intermediate Representation ("LLVM Assembly").  See the
@@ -33,7 +37,9 @@ Building:
 
     Um...just type "make".  If it fails, figure out why and send me a
     patch.  A real build system would probably involve more red tape
-    than all the Nil code. :-) You'll need LLVM and a C compiler.
+    than all the Nil code. :-) You'll need a C compiler (for the bits of
+    interfaced to the system) and LLVM.  Probably LLVM >= 2.5, possibly
+    >= 2.6 if I've accidentally used anything new in 2.6.
 
 Installation:
 
@@ -44,10 +50,10 @@ Running:
 
 Type "./nil" in the build directory and behold the glory.
 
-In v0.0.4 Nil recognizes and lists the tokens entered on the input line
-separated with spaces; symbols not seen before are prefixed with (new) as an
-aid to monitoring the behavior of the symbol uniqueifier.  For the same reason,
-the list of known strings is printed before each prompt.  The interaction loop
+In v0.0.4.p1 Nil recognizes and lists the tokens entered on the input line
+separated with spaces; symbols not seen before are prefixed with (+) as an aid
+to monitoring the behavior of the symbol uniqueifier.  For the same reason, the
+list of known strings is printed before each prompt.  The interaction loop
 quits when EOF or an I/O error is encountered, and warns about bad characters
 on the input.
 
@@ -57,9 +63,11 @@ example, '(' and ')' are treated as single tokens in their own right separate
 from symbol strings.  At this point it accepts more characters as symbol
 characters than even lisp should, but that's not worth fixing right now.
 
-Note that while this is the same user-visible behavior as in v0.0.3 except for
-the monitoring output, internally we now have a true lisp list implementation
-and the list of known strings uses it, which is a notable advance.
+Note that this is the same user-visible behavior as in v0.0.4 except for the
+(+) notation (instead of (new)).  The major changes from 0.0.4 are all to make
+implementing the parser easier--the lexer returns structs and the error codes
+are collapsed into a single exception token.  In addition, the code has
+received a project-wide cleanup.
 
 HACKING
 
@@ -67,7 +75,7 @@ While there isn't much there yet, it's on github to be played with.  Note that
 this is *very* unstable development code. :-)  While portability is a minor
 concern at the moment the code has been built (if I felt like it) with LLVM 2.5
 on x86 Fedora 11 as well as the with LLVM 2.6 on AMD64 Fedora 12 Linux.
-However, LLVM should take care of most machine dependencies and it aspires to
+However, LLVM should take care of most machine dependencies and Nil aspires to
 be reasonably portable someday when it grows up, so report gross incivilities
 in the github issue tracker.
 
@@ -112,11 +120,14 @@ system.llh    #includes c_defs.llh, declares prototypes of useful libc
               calls) plus the prototypes for the functions in system_c.c
               and system_ll.llm, defines ASCII convenience constants, etc.
 
-lex.llh/m     The nil lexer.  This should only depend on c_defs, system,
+lex.ll[hm]    The nil lexer.  This should only depend on c_defs, system,
               and nil.llh--nothing here should use the expression code.
               That means the Lexemes get turned into Nil expressions
               elsewhere.
 
-exp.llh/m     The expression implementation, plus support code such as
+exp.ll[hm]    The expression implementation, plus support code such as
               the unique string list.
+
+memory.ll[hm] The memory-handling code is here, both for strings (the
+              unique string facility) and cells.
 
