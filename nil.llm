@@ -49,27 +49,18 @@
 #include "memory.llh"
 
 ;**********************************************************************
-; NextToken (public)
+; ReadToken (public)
 ;
 ; The front end of the nil tokenizer.  Constructs the tokens required
-; by the parser from the lexemes identified by ReadLexeme().  Part of
-; the expression module because it knows about expression types.
-;
-; FIXME: figure out how to return the structure properly.
+; by the parser from the lexemes identified by ReadLexeme().
 ;
 ;**********************************************************************
 
-define NILCC void
-@NextToken(%Token* %token)
+define NILCC %Token
+@ReadToken()
 {
-    %inToken = call NILCC %Token @ReadLexeme()
-    %tokenType = extractvalue %Token %inToken, 0
-
-    ; Set up both pointers here for convenience
-    %typeFieldPtr = getelementptr %Token* %token, i32 0, i32 0
-    %expFieldPtr = getelementptr %Token* %token, i32 0, i32 1
-
-    store %c_int %tokenType, %c_int* %typeFieldPtr
+    %token = call NILCC %Token @ReadLexeme()
+    %tokenType = extractvalue %Token %token, 0
 
     switch %c_int %tokenType, label %CantHappen [
 
@@ -89,11 +80,10 @@ CantHappen:
     br label %CantHappen
 
 ReturnCode:
-    store %Exp NIL_VALUE, %Exp* %expFieldPtr
-    ret void
+    ret %Token %token
 
 ReturnSymbol:
-    %lexemeWord = extractvalue %Token %inToken, 1
+    %lexemeWord = extractvalue %Token %token, 1
     %lexeme = inttoptr %Word %lexemeWord to %c_char*
     #ifndef NDEBUG
     ; Check to see that the string is at least one character long
@@ -101,13 +91,15 @@ ReturnSymbol:
     %len = call ccc %c_size_t @strlen(%c_char* %lexeme)
     %positive = icmp ugt %c_size_t %len, 0
     assert(%positive)
+    ; Could assert that it's aligned as well.
     #endif
 
     ; Get the corresponding nil_symbol
     %symbol = call NILCC %Exp @NewSymbol(%c_char* %lexeme)
-    store %Exp %symbol, %Exp* %expFieldPtr
+    %symbolWord = bitcast %Exp %symbol to %Word ; currently pointless
+    %newToken = insertvalue %Token %token, %Word %symbolWord, 1
 
-    ret void
+    ret %Token %newToken
 }
 
 ;**********************************************************************
@@ -141,8 +133,6 @@ ReturnSymbol:
 define %c_int
 @main(%c_int %argc, %c_char **%argv)
 {
-    %tokenPtr = alloca %Token
-
     ; This flag is necessary to avoid double-spacing the prompt when
     ; nothing was entered.
     %hadInputPtr = alloca i1
@@ -156,23 +146,22 @@ define %c_int
     br label %PrintPrompt
 
 PrintPrompt:
-    #if 1
     ; Show the current list of strings before each new prompt
     %knownStr = getelementptr [KNOWNARRAY_LEN x %c_char]* @knownArray,
                                                           i64 0, i64 0
     call ccc %c_int @putstring(%c_char* %knownStr)
     call NILCC void @PrintAllStrings()
     call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
-    #endif
+
+    ; Print the prompt
     %promptString = getelementptr [PROMPTARRAY_LEN x %c_char]*
                                            @promptArray, i64 0, i64 0
     call ccc %c_int @putstring(%c_char* %promptString)
     br label %ReadChar
 
 ReadChar:
-    call NILCC void @NextToken(%Token* %tokenPtr)
-    %codePtr = getelementptr %Token* %tokenPtr, i32 0, i32 0
-    %code = load %c_int* %codePtr
+    %token = call NILCC %Token @ReadToken()
+    %code = extractvalue %Token %token, 0
 
     switch %c_int %code, label %PrintChar [
 
@@ -207,8 +196,8 @@ WarnBadChar:
     br label %ReadChar
 
 PrintExp:
-    %expPtr = getelementptr %Token* %tokenPtr, i32 0, i32 1
-    %exp = load %Exp* %expPtr
+    %expWord = extractvalue %Token %token, 1
+    %exp = bitcast %Word %expWord to %Exp
     call NILCC void @PrintExp(%Exp %exp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
