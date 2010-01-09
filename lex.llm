@@ -84,9 +84,9 @@ Loop:
             ; Throw away whitespace
             switch %c_int %currentChar, label %Start_TokenChar [
 
-                %c_int NIL_EOF,        label %AcceptNonprinting
-                %c_int NIL_IOERROR,    label %AcceptNonprinting
-                %c_int NIL_BADCHAR,    label %AcceptNonprinting
+                %c_int NIL_EOF,        label %AcceptException
+                %c_int NIL_IOERROR,    label %AcceptException
+                %c_int NIL_BADCHAR,    label %AcceptException
 
                 %c_int ASCII_TAB,      label %Loop
                 %c_int ASCII_NEWLINE,  label %AcceptChar
@@ -129,16 +129,16 @@ Loop:
             call NILCC void @AppendLexemeChar(%c_int %currentChar)
             br label %Loop
 
-AcceptNonprinting: ; Only separate from AcceptChar in case we want to
-                   ; add some debugging output
-    %struct1 = insertvalue %Token {%c_int 0, %Word 0},
-                                               %c_int %currentChar, 0
-    ret %Token %struct1
+AcceptException:
+    %exceptionType = sext %c_int %currentChar to %Word
+    %exception = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
+                                               %Word %exceptionType, 1
+    ret %Token %exception
 
 AcceptChar:
-    %struct2 = insertvalue %Token {%c_int 0, %Word 0},
+    %char = insertvalue %Token {%c_int 0, %Word 0},
                                                %c_int %currentChar, 0
-    ret %Token %struct2
+    ret %Token %char
 
 AcceptSymbol:
     ; Push back the non-Symbol character we found for the next call
@@ -270,13 +270,10 @@ SmallEnough:
 AcceptNextChar:
     ret %c_int %nextChar
 
-; This is the only exceptional return value, as we've already
-; taken care of elementary error reporting
+; Handle Exceptional Conditions--translate to Nil-wide codes.
 
 OnEOF:
     ret %c_int NIL_EOF
-
-; Handle Exceptional Conditions
 
 BadChar:
     ret %c_int NIL_BADCHAR

@@ -64,14 +64,12 @@ define NILCC %Token
 
     switch %c_int %tokenType, label %CantHappen [
 
-        %c_int NIL_EOF,        label %ReturnCode
-        %c_int NIL_IOERROR,    label %ReturnCode
-        %c_int NIL_BADCHAR,    label %ReturnCode
+        %c_int NIL_EXCEPTION,  label %PassThrough
 
-        %c_int ASCII_NEWLINE,  label %ReturnCode
+        %c_int ASCII_NEWLINE,  label %PassThrough
 
-        %c_int ASCII_LPAREN,   label %ReturnCode
-        %c_int ASCII_RPAREN,   label %ReturnCode
+        %c_int ASCII_LPAREN,   label %PassThrough
+        %c_int ASCII_RPAREN,   label %PassThrough
         %c_int NIL_SYMBOL,     label %ReturnSymbol
     ]
 
@@ -79,7 +77,7 @@ CantHappen:
     cant_happen()
     br label %CantHappen
 
-ReturnCode:
+PassThrough:
     ret %Token %token
 
 ReturnSymbol:
@@ -165,32 +163,16 @@ ReadChar:
 
     switch %c_int %code, label %PrintChar [
 
-        %c_int NIL_EOF,      label %Exit
-        %c_int NIL_IOERROR,  label %ExitIOError
-        %c_int NIL_BADCHAR,  label %WarnBadChar
-        %c_int NIL_SYMBOL,   label %PrintExp
-        %c_int NIL_CELL,     label %PrintExp
+        %c_int NIL_SYMBOL,   label   %PrintExp
+        %c_int NIL_CELL,     label   %PrintExp
 
         %c_int ASCII_NEWLINE,  label %NewLine
+
+        %c_int NIL_EXCEPTION, label  %Exception
     ]
 
 PrintChar:
     call ccc %c_int @putchar(%c_int %code)
-    call ccc %c_int @putchar(%c_int ASCII_SPACE)
-    store i1 1, i1* %hadInputPtr
-    br label %ReadChar
-
-ExitIOError:
-    %ioErrorMsg = getelementptr [IOERRORARRAY_LEN x %c_char]*
-                        @ioErrorArray, i64 0, i64 0
-    call ccc %c_int @puts(%c_char* %ioErrorMsg)
-    store i1 1, i1* %hadInputPtr
-    br label %Exit
-
-WarnBadChar:
-    %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
-                        @badCharArray, i64 0, i64 0
-    call ccc %c_int @putstring(%c_char* %badCharMsg)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
     br label %ReadChar
@@ -213,6 +195,39 @@ NewLine:
 
     store i1 0, i1* %hadInputPtr
     br label %PrintPrompt
+
+Exception:
+
+    %exception = extractvalue %Token %token, 1
+
+    switch %Word %exception, label %CantHappen [
+
+        %Word NIL_EOF,          label %Exit
+        %Word NIL_IOERROR,      label %ExitIOError
+        %Word NIL_BADCHAR,      label %WarnBadChar
+        ;%Word NIL_EXTRA_RPAREN,
+    ]
+
+CantHappen:
+%exceptInt = trunc %Word %exception to %c_int
+call ccc void @puti(%c_int %exceptInt)
+    cant_happen()
+    br label %CantHappen
+
+ExitIOError:
+    %ioErrorMsg = getelementptr [IOERRORARRAY_LEN x %c_char]*
+                        @ioErrorArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %ioErrorMsg)
+    store i1 1, i1* %hadInputPtr
+    br label %Exit
+
+WarnBadChar:
+    %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
+                        @badCharArray, i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %badCharMsg)
+    call ccc %c_int @putchar(%c_int ASCII_SPACE)
+    store i1 1, i1* %hadInputPtr
+    br label %ReadChar
 
 Exit:
     call ccc %c_int @putchar(%c_int ASCII_NEWLINE)

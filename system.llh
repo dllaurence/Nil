@@ -116,7 +116,8 @@
     declare ccc void @putptr(i8*)
 
     ; We define our own codes, whether they match or not, to decouple our
-    ; code from libc.
+    ; code from libc and because they aren't 1-1 anyway (IO_ERROR is covering
+    ; anything reported by errno, for example)
     #define IO_EOF      -1
     #define IO_ERROR    -10
 
