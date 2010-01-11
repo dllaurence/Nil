@@ -66,7 +66,7 @@
 ; aren't using it.
 #undef INVOKE_READLEXEME
 
-#define INVOKE_READTOKEN
+#undef INVOKE_READTOKEN
 
 define NILCC %Token
 @ReadToken()
@@ -144,6 +144,67 @@ ReturnSymbol:
     %newToken = insertvalue %Token %token, %Word %symbolWord, 1
 
     ret %Token %newToken
+}
+
+;**********************************************************************
+; GetToken (public)
+;
+; A buffer to allow the parser a token of lookahead using UngetToken.
+;
+;**********************************************************************
+
+; One for now, but written so it's very easy to increase the lookahead
+#define TOKEN_BUFFER_SIZE 1
+@tokenBuffer = internal global [TOKEN_BUFFER_SIZE x %Token] undef
+@tokenBufferCount = internal global %Word 0
+
+define NILCC %Token
+@GetToken()
+{
+    %numBuffered = load %Word* @tokenBufferCount
+    #ifndef DEBUG
+    %nonNegative = icmp sge %Word %numBuffered, 0
+    assert(%nonNegative)
+    #endif
+
+    %bufferEmpty = icmp eq %Word %numBuffered, 0
+    br i1 %bufferEmpty, label %BufferEmpty, label %BufferNotEmpty
+
+BufferEmpty:
+    %newToken = call NILCC %Token @ReadToken()
+    ret %Token %newToken
+
+BufferNotEmpty:
+    %index = sub %Word %numBuffered, 1
+    store %Word %index, %Word* @tokenBufferCount
+    %tokenPtr = getelementptr [TOKEN_BUFFER_SIZE x %Token]* @tokenBuffer,
+                         i64 0, %Word %index
+    %oldToken = load %Token* %tokenPtr
+    ret %Token %oldToken
+}
+
+;**********************************************************************
+; UngetToken (public)
+;
+;**********************************************************************
+
+define NILCC void
+@UngetToken(%Token %token)
+{
+    %numBuffered = load %Word* @tokenBufferCount
+    #ifndef DEBUG
+    %canAdd = icmp slt %Word %numBuffered, TOKEN_BUFFER_SIZE
+    assert(%canAdd)
+    #endif
+
+    %tokenPtr = getelementptr [TOKEN_BUFFER_SIZE x %Token]* @tokenBuffer,
+                         i64 0, %Word %numBuffered
+    store %Token %token, %Token* %tokenPtr
+
+    %newNumBuffered = add %Word %numBuffered, 1
+    store %Word %newNumBuffered, %Word* @tokenBufferCount
+
+    ret void
 }
 
 #if 0
@@ -431,7 +492,7 @@ PrintPrompt:
 
 ReadChar:
 #ifdef INVOKE_READTOKEN
-    %token = invoke NILCC %Token @ReadToken() to     label %GotChar
+    %token = invoke NILCC %Token @GetToken() to     label %GotChar
                                               unwind label %Catch
 
     Catch:
@@ -440,7 +501,7 @@ ReadChar:
 
 GotChar:
 #else
-    %token = call NILCC %Token @ReadToken()
+    %token = call NILCC %Token @GetToken()
 #endif
     %code = extractvalue %Token %token, 0
 

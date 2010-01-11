@@ -75,10 +75,5 @@
 
     %Token = type {%c_int, %Word}
 
-    ; Convention: code 0 is "no exception" and should never be seen.
-    ; If I keep this system we may want an exception module to manage
-    ; this sort of thing?
-;    @exceptionCode = external global %Word
-
 #endif
 
