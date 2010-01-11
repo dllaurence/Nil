@@ -28,6 +28,9 @@
 
     @pBufferIndex = internal global %c_size_t 0
 
+    ; Maintained by hand for now :-(
+    @exceptionCode = external global %Word
+
 ;**********************************************************************
 ; ReadLexeme (public)
 ;
@@ -46,6 +49,8 @@
 ; it any easier? :-)
 ;
 ;**********************************************************************
+
+#define INVOKE_GETVALIDCHAR
 
 define NILCC %Token
 @ReadLexeme()
@@ -66,8 +71,23 @@ define NILCC %Token
 
 Loop:
 
-            %currentChar = call NILCC %c_int @GetValidChar()
+#ifdef INVOKE_GETVALIDCHAR
+    ;Try
+            %currentChar = invoke NILCC %c_int @GetValidChar()
+                to     label %DoState
+                unwind label %Catch
 
+        Catch:
+            call ccc %c_int @putchar(%c_int ASCII_BANG)
+            %exceptionType1 = load %Word* @exceptionCode
+            %exception1 = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
+                                                       %Word %exceptionType1, 1
+            ret %Token %exception1
+
+    DoState:
+#else
+            %currentChar = call NILCC %c_int @GetValidChar()
+#endif
             %state = load %Word* %pState
             switch %Word %state, label %Next_Error [
 
@@ -130,6 +150,10 @@ Loop:
             br label %Loop
 
 AcceptException:
+#ifdef INVOKE_GETVALIDCHAR
+    ; Shouldn't be possible now
+    cant_happen()
+#endif
     %exceptionType = sext %c_int %currentChar to %Word
     %exception = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
                                                %Word %exceptionType, 1
@@ -273,12 +297,18 @@ AcceptNextChar:
 ; Handle Exceptional Conditions--translate to Nil-wide codes.
 
 OnEOF:
-    ret %c_int NIL_EOF
+    store %Word NIL_EOF, %Word* @exceptionCode
+    unwind
+;    ret %c_int NIL_EOF
 
 BadChar:
-    ret %c_int NIL_BADCHAR
+    store %Word NIL_BADCHAR, %Word* @exceptionCode
+    unwind
+;    ret %c_int NIL_BADCHAR
 
 OnIOError:
-    ret %c_int NIL_IOERROR
+    store %Word NIL_IOERROR, %Word* @exceptionCode
+    unwind
+;    ret %c_int NIL_IOERROR
 }
 

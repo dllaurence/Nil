@@ -48,6 +48,12 @@
 #include "exp.llh"
 #include "memory.llh"
 
+; For now, we'll leave the definition here in the main module.
+; For now, we are maintaining the definition here and the declarations
+; in other files by hand because LLVM would call this a redefinition of
+; an external declaration. :-(
+    @exceptionCode = global %Word 0
+
 ;**********************************************************************
 ; ReadToken (public)
 ;
@@ -56,15 +62,38 @@
 ;
 ;**********************************************************************
 
+; Right now, I can't make this work across translation units, so we
+; aren't using it.
+#undef INVOKE_READLEXEME
+
 define NILCC %Token
 @ReadToken()
 {
+#ifdef INVOKE_READLEXEME
+    %token = invoke NILCC %Token @ReadLexeme()
+        to     label %DoType
+        unwind label %Catch
+
+    Catch:
+            call ccc %c_int @putchar(%c_int ASCII_BANG)
+            %exceptionType = load %Word* @exceptionCode
+            %exception = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
+                                                       %Word %exceptionType, 1
+            ret %Token %exception
+DoType:
+#else
     %token = call NILCC %Token @ReadLexeme()
+#endif
+
     %tokenType = extractvalue %Token %token, 0
 
     switch %c_int %tokenType, label %CantHappen [
 
-        %c_int NIL_EXCEPTION,  label %PassThrough
+#ifdef INVOKE_READLEXEME
+        %c_int NIL_EXCEPTION,  label %BadException
+#else
+        %c_int NIL_EXCEPTION,  label %Exception
+#endif
 
         %c_int ASCII_NEWLINE,  label %PassThrough
 
@@ -73,9 +102,18 @@ define NILCC %Token
         %c_int NIL_SYMBOL,     label %ReturnSymbol
     ]
 
+; Different than CantHappen for testing purposes--will eventually go away
+; when I'm confident in invoke/unwind
+BadException:
+    cant_happen()
+    br label %BadException
+
 CantHappen:
     cant_happen()
     br label %CantHappen
+
+Exception:
+    ret %Token %token
 
 PassThrough:
     ret %Token %token

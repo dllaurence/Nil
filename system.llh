@@ -27,6 +27,7 @@
     #define ASCII_SPACE     32
 
     ; Symbols
+    #define ASCII_BANG      33
     #define ASCII_DQUOTE    34
     #define ASCII_HASH      35
     #define ASCII_SQUOTE    39

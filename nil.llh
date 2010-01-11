@@ -55,8 +55,8 @@
     ; return--this is tedious but safer because it decouples the code.
 
     ; I/O Exceptions
-    #define NIL_EOF           -1
-    #define NIL_IOERROR       -2
+    #define NIL_EOF            -1
+    #define NIL_IOERROR        -2
 
     ; Lexer Exceptions
     #define NIL_EXCEPTION     -11
@@ -74,6 +74,11 @@
 ; similar to a cell, but conceptually they are unrelated types.)
 
     %Token = type {%c_int, %Word}
+
+    ; Convention: code 0 is "no exception" and should never be seen.
+    ; If I keep this system we may want an exception module to manage
+    ; this sort of thing?
+;    @exceptionCode = external global %Word
 
 #endif
 
