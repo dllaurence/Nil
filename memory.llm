@@ -123,8 +123,13 @@ define NILCC void
 ;**********************************************************************
 
 ; Message for monitoring the interpreter behavior
+
+#undef DEBUG_NEW
+
+#ifdef DEBUG_NEW
 #define NEW_LEN 4
 @newArray = internal constant [NEW_LEN x %c_char] c"(+)\00"
+#endif
 
 
 define NILCC %c_char*
@@ -152,7 +157,7 @@ ReturnOldString:
     ret %c_char* %existingString
 
 GetNewString:
-#if 1
+#ifdef DEBUG_NEW
 %newStr = getelementptr [NEW_LEN x %c_char]* @newArray, i64 0, i64 0
 call ccc %c_int @putstring(%c_char* %newStr)
 #endif

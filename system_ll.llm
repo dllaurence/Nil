@@ -33,7 +33,6 @@ define ccc void @cant_happen_impl(%c_int %line) noreturn
     call ccc %c_int (%c_char*, ...)* @printf(%c_char* %pMsg, %c_int %line)
     call ccc %c_int @putchar(%c_int 10) ; why didn't \10 work in printf?
     Abort()
-;    call ccc void @abort() noreturn
     ret void
 }
 
@@ -44,7 +43,6 @@ define ccc void @cant_happen_impl(%c_int %line) noreturn
 
 @assert_array = internal constant [29 x %c_char] c"Line %d: Assertion failed, \10\00"
 
-; never returns
 define ccc void @assert_impl(i1 %test, %c_int %line)
 {
     br i1 %test, label %True, label %False
@@ -66,7 +64,6 @@ False:
 ;
 ;**********************************************************************
 
-; never returns
 define ccc void @assert_false_impl(i1 %test, %c_int %line)
 {
     %not = xor i1 %test, 1

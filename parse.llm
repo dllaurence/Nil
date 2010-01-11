@@ -1,0 +1,304 @@
+;**********************************************************************
+; parse.llm
+;
+; Implementation of the parser.
+;
+; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "parse.llh"
+#include "lex.llh"
+#include "exp.llh"
+#include "system.llh"
+
+;**********************************************************************
+; ReadParseExp
+;
+; The front end of the nil tokenizer.  Constructs the parse expressions
+; required by the parser from the tokens identified by ReadLexeme().
+;
+; Note that this function has lots of no-op bitcasting.  The reason is
+; that at least notionally the lexer owns the Token type and the parser
+; owns the ParseExp type, and no other module using ParseExp's should
+; need to know about Tokens.  That will matter if either ever changes
+; its representation.
+;
+;**********************************************************************
+
+define NILCC %ParseExp
+@ReadParseExp()
+{
+    %token = call NILCC %Token @ReadLexeme()
+
+    %tokenType = extractvalue %Token %token, 0
+
+    switch %c_int %tokenType, label %CantHappen [
+
+        %c_int NIL_EXCEPTION,  label %PassThrough
+
+        %c_int ASCII_NEWLINE,  label %PassThrough
+
+        %c_int ASCII_LPAREN,   label %PassThrough
+        %c_int ASCII_RPAREN,   label %PassThrough
+        %c_int NIL_SYMBOL,     label %ReturnSymbol
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+PassThrough:
+    ; This is a painful way to write a no-op!
+    %valueWord = extractvalue %Token %token, 1
+    %valueExp = bitcast %Word %valueWord to %Exp
+    %sameType = insertvalue %ParseExp undef, %c_int %tokenType, 0
+    %parseExp = insertvalue %ParseExp %sameType, %Exp %valueExp, 1
+    ret %ParseExp %parseExp
+
+ReturnSymbol:
+    %lexemeWord = extractvalue %Token %token, 1
+    %lexeme = inttoptr %Word %lexemeWord to %c_char*
+    #ifndef NDEBUG
+    ; Check to see that the string is at least one character long
+    ; (since the lexer shouldn't ever produce an empty string)
+    %len = call ccc %c_size_t @strlen(%c_char* %lexeme)
+    %positive = icmp ugt %c_size_t %len, 0
+    assert(%positive)
+    ; Could assert that it's aligned as well.
+    #endif
+
+    ; Get the corresponding nil_symbol
+    %symbol = call NILCC %Exp @NewSymbol(%c_char* %lexeme)
+    %symbolExp = insertvalue %ParseExp {%c_int NIL_SYMBOL, %Exp undef},
+                                          %Exp %symbol, 1
+
+    ret %ParseExp %symbolExp
+}
+
+;**********************************************************************
+; GetParseExp
+;
+; A buffer to allow the parser a token (%ParseExp) of lookahead using
+; UngetParseExp.  This greatly simplifies the interaction loop as well.
+;
+;**********************************************************************
+
+; One token (expression) lookahead for now.
+#define EXP_BUFFER_SIZE 1
+@expBuffer = internal global [EXP_BUFFER_SIZE x %ParseExp] undef
+@expBufferCount = internal global %Word 0
+
+define NILCC %ParseExp
+@GetParseExp()
+{
+    %numBuffered = load %Word* @expBufferCount
+    #ifndef NDEBUG
+    %nonNegative = icmp sge %Word %numBuffered, 0
+    assert(%nonNegative)
+    #endif
+
+    %bufferEmpty = icmp eq %Word %numBuffered, 0
+    br i1 %bufferEmpty, label %BufferEmpty, label %BufferNotEmpty
+
+BufferEmpty:
+    %newParseExp = call NILCC %ParseExp @ReadParseExp()
+    ret %ParseExp %newParseExp
+
+BufferNotEmpty:
+    %index = sub %Word %numBuffered, 1
+    store %Word %index, %Word* @expBufferCount
+    %expPtr = getelementptr [EXP_BUFFER_SIZE x %ParseExp]* @expBuffer,
+                         i64 0, %Word %index
+    %oldParseExp = load %ParseExp* %expPtr
+    ret %ParseExp %oldParseExp
+}
+
+;**********************************************************************
+; UngetParseExp
+;
+;**********************************************************************
+
+define NILCC void
+@UngetParseExp(%ParseExp %parseExp)
+{
+    %numBuffered = load %Word* @expBufferCount
+    #ifndef NDEBUG
+    %canAdd = icmp slt %Word %numBuffered, EXP_BUFFER_SIZE
+    assert(%canAdd)
+    #endif
+
+    %expPtr = getelementptr [EXP_BUFFER_SIZE x %ParseExp]* @expBuffer,
+                         i64 0, %Word %numBuffered
+    store %ParseExp %parseExp, %ParseExp* %expPtr
+
+    %newNumBuffered = add %Word %numBuffered, 1
+    store %Word %newNumBuffered, %Word* @expBufferCount
+
+    ret void
+}
+
+;**********************************************************************
+; Parser
+;
+; The beginnings of a parser module.
+;
+;**********************************************************************
+
+#define CONTPROMPTARRAY_LEN 6
+@contPromptArray = internal constant [CONTPROMPTARRAY_LEN x %c_char] c"---> \00"
+
+;**********************************************************************
+; ReadExp (public)
+;
+; The Nil parser, implemented as a mutually recursive pair of functions.
+;
+; Warning: here there be tygers.  Recursive tygers.
+;
+;**********************************************************************
+
+define NILCC %ParseExp
+@ReadExp()
+{
+    br label %GetParseExp
+
+GetParseExp:
+    %parseExp = call NILCC %ParseExp @GetParseExp()
+
+    %parseExpType = extractvalue %ParseExp %parseExp, 0
+
+    switch %c_int %parseExpType, label %CantHappen [
+
+        %c_int ASCII_NEWLINE,  label %Newline
+
+        %c_int NIL_CELL,       label %CantHappen  ; Noted explicitly
+        %c_int NIL_SYMBOL,     label %ReturnParseExp
+
+        %c_int ASCII_LPAREN,   label %BeginList
+        %c_int ASCII_RPAREN,   label %EndList
+
+        %c_int NIL_EXCEPTION,  label %ReturnParseExp
+    ]
+
+Newline:
+    %promptStr = getelementptr [CONTPROMPTARRAY_LEN x %c_char]* @contPromptArray,
+                                                                i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %promptStr)
+    br label %GetParseExp
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+ReturnParseExp:
+    %retParseExp = phi %ParseExp [%parseExp, %GetParseExp],
+                           [%parseExp, %GetParseExp],
+                           [%listParseExp, %BeginList]
+    ret %ParseExp %retParseExp
+
+EndList:
+    %lParenParseExp = insertvalue %ParseExp {%c_int NIL_EXCEPTION, %Exp undef},
+                                                   %Exp NIL_EXTRA_RPAREN, 1
+     ret %ParseExp %lParenParseExp
+
+BeginList:
+    ; Drop left paren
+    %listParseExp = call NILCC %ParseExp @ReadList()
+    %listParseExpType = extractvalue %ParseExp %listParseExp, 0
+
+    %gotException = icmp eq %c_int %listParseExpType, NIL_EXCEPTION
+    br i1 %gotException, label %ReturnParseExp, label %GotList
+
+GotList:
+    %endParseExp = call NILCC %ParseExp @GetParseExp()
+    %endParseExpType = extractvalue %ParseExp %endParseExp, 0
+    %gotEndParen = icmp eq %c_int %endParseExpType, ASCII_RPAREN
+    assert(%gotEndParen)
+    ret %ParseExp %listParseExp
+}
+
+;**********************************************************************
+; ReadList (private)
+;
+;**********************************************************************
+
+define NILCC %ParseExp
+@ReadList()
+{
+    br label %GetParseExp
+
+GetParseExp:
+    %parseExp = call NILCC %ParseExp @GetParseExp()
+
+    %parseExpType = extractvalue %ParseExp %parseExp, 0
+
+    switch %c_int %parseExpType, label %GetCAR [
+
+        %c_int ASCII_NEWLINE,  label %Newline
+        %c_int ASCII_RPAREN,   label %EndList
+    ]
+
+Newline:
+    %promptStr = getelementptr [CONTPROMPTARRAY_LEN x %c_char]* @contPromptArray,
+                                                                i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %promptStr)
+    br label %GetParseExp
+
+EndList:
+    call NILCC void @UngetParseExp(%ParseExp %parseExp)
+    ret %ParseExp {%c_int NIL_SYMBOL, %Exp NIL_VALUE}
+
+GetCAR:
+    call NILCC void @UngetParseExp(%ParseExp %parseExp)
+    %carParseExp = call NILCC %ParseExp @ReadExp()
+    %carParseExpType = extractvalue %ParseExp %carParseExp, 0
+
+    %gotCARException = icmp eq %c_int %carParseExpType, NIL_EXCEPTION
+    br i1 %gotCARException, label %ReturnParseExp, label %GetCDR
+
+ReturnParseExp:
+    %retParseExp = phi %ParseExp [%carParseExp, %GetCAR],
+                           [%cdrParseExp, %GetCDR]
+    ret %ParseExp %retParseExp
+
+GetCDR:
+    %cdrParseExp = call NILCC %ParseExp @ReadList()
+    %cdrParseExpType = extractvalue %ParseExp  %cdrParseExp, 0
+    %gotCDRException = icmp eq %c_int %cdrParseExpType, NIL_EXCEPTION
+    br i1 %gotCDRException, label %ReturnParseExp, label %ReturnCons
+
+ReturnCons:
+    %car = extractvalue %ParseExp %carParseExp, 1
+    %cdr = extractvalue %ParseExp %cdrParseExp, 1
+    %cell = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+    %cellParseExp = insertvalue %ParseExp {%c_int NIL_CELL, %Exp undef},
+                                                      %Exp %cell, 1
+    ret %ParseExp %cellParseExp
+}
+
+;**********************************************************************
+; Read
+;
+;**********************************************************************
+
+define NILCC %ParseExp
+@Read()
+{
+    %firstParseExp = call NILCC %ParseExp @GetParseExp()
+    %firstParseExpType = extractvalue %ParseExp %firstParseExp, 0
+
+    switch %c_int %firstParseExpType, label %Other [
+
+        %c_int ASCII_NEWLINE,  label %Newline
+    ]
+
+Other:
+    call NILCC void @UngetParseExp(%ParseExp %firstParseExp)
+    %parseExp = call NILCC %ParseExp @ReadExp()
+    ret %ParseExp %parseExp
+
+Newline:
+    ret %ParseExp %firstParseExp
+}
+

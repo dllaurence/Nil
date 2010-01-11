@@ -13,6 +13,8 @@
 
 #include "nil.llh"
 
+    %Token = type {%c_int, %Word}
+
     declare NILCC %Token @ReadLexeme()
 
     declare NILCC void     @ClearLexemeBuffer()

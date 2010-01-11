@@ -28,6 +28,9 @@
 
     @pBufferIndex = internal global %c_size_t 0
 
+    ; Maintained by hand for now :-(
+    @exceptionCode = external global %Word
+
 ;**********************************************************************
 ; ReadLexeme (public)
 ;
@@ -35,15 +38,15 @@
 ; implemented directly in code, which is an instructive example of a
 ; complex function written in IR.  As the code is already complex enough
 ; and verges on being "write only" code, ReadLexeme only identifies
-; significant character sequences (lexemes) in the source, while
-; NextToken does the actual construction of the corresponding token
-; required by the parser.
+; significant character sequences (lexemes) in the source, while the
+; actual construction of the corresponding token required by the parser
+; is broken out into NextToken().
 ;
 ; There is a great deal of redundancy in the code, but those are not to
 ; be simplified away until the lexer is thoroughly debugged.
 ;
-; Yes, it's hard to read.  It was hard to write, and why should you have
-; it any easier? :-)
+; Yes, it's hard to read.  It's a state machine, what do you want?  It
+; was hard to write, and why should you have it any easier? :-)
 ;
 ;**********************************************************************
 
@@ -65,9 +68,21 @@ define NILCC %Token
     br label %Loop
 
 Loop:
+    ;Try
+        %currentChar = invoke NILCC %c_int @GetValidChar()
+            to     label %DoState
+            unwind label %Catch
 
-            %currentChar = call NILCC %c_int @GetValidChar()
+        Catch:
+            #if 0
+            call ccc %c_int @putchar(%c_int ASCII_BANG)
+            #endif
+            %exceptionType = load %Word* @exceptionCode
+            %exception = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
+                                                   %Word %exceptionType, 1
+            ret %Token %exception
 
+    DoState:
             %state = load %Word* %pState
             switch %Word %state, label %Next_Error [
 
@@ -130,10 +145,9 @@ Loop:
             br label %Loop
 
 AcceptException:
-    %exceptionType = sext %c_int %currentChar to %Word
-    %exception = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
-                                               %Word %exceptionType, 1
-    ret %Token %exception
+    ; Shouldn't be possible now
+    cant_happen()
+    br label %AcceptException
 
 AcceptChar:
     %char = insertvalue %Token {%c_int 0, %Word 0},
@@ -273,12 +287,18 @@ AcceptNextChar:
 ; Handle Exceptional Conditions--translate to Nil-wide codes.
 
 OnEOF:
-    ret %c_int NIL_EOF
+    store %Word NIL_EOF, %Word* @exceptionCode
+    unwind
+;    ret %c_int NIL_EOF
 
 BadChar:
-    ret %c_int NIL_BADCHAR
+    store %Word NIL_BADCHAR, %Word* @exceptionCode
+    unwind
+;    ret %c_int NIL_BADCHAR
 
 OnIOError:
-    ret %c_int NIL_IOERROR
+    store %Word NIL_IOERROR, %Word* @exceptionCode
+    unwind
+;    ret %c_int NIL_IOERROR
 }
 

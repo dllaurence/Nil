@@ -31,32 +31,14 @@
     #define WORD_T_SIZEOF C_INTPTR_T_SIZEOF
     #define WORD_T_BITSOF C_INTPTR_T_BITSOF
 
-; The fundamental handle type by which we manipulate expressions.
-; Placed here instead of in exp.llh because it decouples the headers
-; of modules that use exp but are well-behaved enough to not take
-; or return implementation types.
-
-; Everything in Nil is an expression, implemented as a pointer to an
-; object (of the low-level malloc() sort, not the Smalltalk or even
-; C++ sort).  The pointer is represented as an integer because exp
-; will be storing type tags in the low-order bits, and need to
-; manipulate the bits to know the type before we know how to manipulate
-; the pointer.
-
-; Naming convention note; this isn't nil_exp because I don't think
-; lisp has or needs an explicit name for this type--*EVERYTHING* is this
-; type, always.
-
-    %Exp = type %Word
-
 ; Codes common to multiple modules
 
     ; Nil defines its own values independent of what libc or system
     ; return--this is tedious but safer because it decouples the code.
 
     ; I/O Exceptions
-    #define NIL_EOF           -1
-    #define NIL_IOERROR       -2
+    #define NIL_EOF            -1
+    #define NIL_IOERROR        -2
 
     ; Lexer Exceptions
     #define NIL_EXCEPTION     -11
@@ -68,12 +50,6 @@
     ; Normal Parsed Expressions
     #define NIL_SYMBOL        -31
     #define NIL_CELL          -32
-
-; The token form needed by the lexer and parser, again put here to
-; reduce the mutual #include dependencies.  (Structurally this is
-; similar to a cell, but conceptually they are unrelated types.)
-
-    %Token = type {%c_int, %Word}
 
 #endif
 

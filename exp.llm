@@ -187,7 +187,7 @@ define NILCC %Exp
         %notNull = icmp ne %c_char* %str, null
         assert(%notNull)
 
-        #ifndef DEBUG
+        #ifndef NDEBUG
         ; Also it obviously must be aligned
         %voidPtr = bitcast %c_char* %str to i8* ; should never be necessary
         %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
@@ -213,7 +213,7 @@ define NILCC %Exp
 define NILCC %c_char*
 @Exp2str(%Exp %exp)
 {
-        #ifndef DEBUG
+        #ifndef NDEBUG
         %tag = call NILCC %Tag @GetTag(%Exp %exp)
         %isSymbol = icmp eq %Tag %tag, SYMBOL_TAG
         assert(%isSymbol)
@@ -247,7 +247,7 @@ define NILCC %Exp
         %notNull = icmp ne %nil_cell* %cell, null
         assert(%notNull)
 
-        #ifndef DEBUG
+        #ifndef NDEBUG
         ; Also it obviously must be aligned
         %voidPtr = bitcast %nil_cell* %cell to i8*
         %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
@@ -272,7 +272,7 @@ define NILCC %Exp
 define NILCC %nil_cell*
 @Exp2nil_cell(%Exp %exp)
 {
-        #ifndef DEBUG
+        #ifndef NDEBUG
         %tag = call NILCC %Tag @GetTag(%Exp %exp)
         %isCell = icmp eq %Tag %tag, CELL_TAG
         assert(%isCell)

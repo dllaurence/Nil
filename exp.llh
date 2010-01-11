@@ -17,7 +17,19 @@
 
 ; Fundamental types
 
-    ; N.B. The fundamental %Exp type is defined in nil.llh
+; The fundamental handle type by which we manipulate expressions.
+; Everything in Nil is an expression, implemented (usually) as a pointer
+; to an object (of the low-level malloc() sort, not the Smalltalk or
+; even C++ sort).  The pointer is represented as an integer because exp
+; will be storing type tags in the low-order bits, and need to
+; manipulate the bits to know the type before we know how to manipulate
+; the pointer.
+
+; Naming convention note; this isn't nil_exp because I don't think
+; lisp has or needs an explicit name for this type--*EVERYTHING* is this
+; type, always.
+
+    %Exp = type %Word
 
     %nil_cell = type {%Exp, %Exp}
 
