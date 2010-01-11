@@ -30,15 +30,17 @@ LLCFLAGS = -O3
 
 all : nil
 
-nil : nil.o system_c.o system_ll.o lex.o exp.o memory.o
+nil : nil.o system_c.o system_ll.o lex.o exp.o memory.o parse.o
 
-nil.ll :    system.llh c_defs.llh nil.llh lex.llh exp.llh
+nil.ll :    system.llh c_defs.llh nil.llh exp.llh         parse.llh
 
-lex.ll :    system.llh c_defs.llh nil.llh lex.llh
+parse.ll :  system.llh c_defs.llh nil.llh exp.llh lex.llh parse.llh
+
+lex.ll :    system.llh c_defs.llh nil.llh         lex.llh
 
 exp.ll :               c_defs.llh nil.llh exp.llh memory.llh
 
-memory.ll : system.llh c_defs.llh nil.llh memory.llh exp.llh
+memory.ll : system.llh c_defs.llh nil.llh exp.llh memory.llh
 
 system_ll.ll : system.llh c_defs.llh
 

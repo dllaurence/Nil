@@ -38,15 +38,15 @@
 ; implemented directly in code, which is an instructive example of a
 ; complex function written in IR.  As the code is already complex enough
 ; and verges on being "write only" code, ReadLexeme only identifies
-; significant character sequences (lexemes) in the source, while
-; NextToken does the actual construction of the corresponding token
-; required by the parser.
+; significant character sequences (lexemes) in the source, while the
+; actual construction of the corresponding token required by the parser
+; is broken out into NextToken().
 ;
 ; There is a great deal of redundancy in the code, but those are not to
 ; be simplified away until the lexer is thoroughly debugged.
 ;
-; Yes, it's hard to read.  It was hard to write, and why should you have
-; it any easier? :-)
+; Yes, it's hard to read.  It's a state machine, what do you want?  It
+; was hard to write, and why should you have it any easier? :-)
 ;
 ;**********************************************************************
 
@@ -78,7 +78,9 @@ Loop:
                 unwind label %Catch
 
         Catch:
+            #if 0
             call ccc %c_int @putchar(%c_int ASCII_BANG)
+            #endif
             %exceptionType1 = load %Word* @exceptionCode
             %exception1 = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
                                                        %Word %exceptionType1, 1

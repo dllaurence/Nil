@@ -69,11 +69,5 @@
     #define NIL_SYMBOL        -31
     #define NIL_CELL          -32
 
-; The token form needed by the lexer and parser, again put here to
-; reduce the mutual #include dependencies.  (Structurally this is
-; similar to a cell, but conceptually they are unrelated types.)
-
-    %Token = type {%c_int, %Word}
-
 #endif
 

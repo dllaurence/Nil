@@ -52,23 +52,18 @@ Running:
 
 Type "./nil" in the build directory and behold the glory.
 
-In v0.0.5 Nil properly (we hope) parses its input and prints the parsed (but
+In v0.0.5 Nil properly (we think) parses its input and prints the parsed (but
 unevaluated) expressions.  The list of known strings is printed before each
 prompt (this is mostly for debugging, but also shows that it is doing something
 besides printing what you typed).
 
 The interaction loop quits when EOF or an I/O error is encountered, and warns
-about bad characters on the input.  It isn't perfect; in particular, it doesn't
-handle bad characters or unmatched parens in the middle of a line very nicely.
-But it is tolerable for the moment, and even allows you to continue with a
-special continuation prompt if you hit return without closing all your parens
-(but not perfectly).
+about bad characters on the input.  It isn't perfect, but it is tolerable for
+the moment and even allows you to continue with a special continuation prompt
+if you hit return without closing all your parens.
 
-You can always tell exactly what nil thinks is a token because tokens are
-always separated by a single space and tokens can never contain spaces; for
-example, '(' and ')' are treated as single tokens in their own right separate
-from symbol strings.  At this point it accepts more characters as symbol
-characters than even lisp should, but that's not worth fixing right now.
+At this point the lexer accepts more characters as symbol characters than even
+lisp should, but that's not worth fixing right now.
 
 HACKING
 

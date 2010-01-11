@@ -44,322 +44,15 @@
 
 #include "nil.llh"
 #include "system.llh"
-#include "lex.llh"
 #include "exp.llh"
 #include "memory.llh"
+#include "parse.llh"
 
 ; For now, we'll leave the definition here in the main module.
 ; For now, we are maintaining the definition here and the declarations
 ; in other files by hand because LLVM would call this a redefinition of
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
-
-;**********************************************************************
-; ReadToken (public)
-;
-; The front end of the nil tokenizer.  Constructs the tokens required
-; by the parser from the lexemes identified by ReadLexeme().
-;
-;**********************************************************************
-
-; Right now, I can't make this work across translation units, so we
-; aren't using it.
-#undef INVOKE_READLEXEME
-
-#undef INVOKE_READTOKEN
-
-define NILCC %Token
-@ReadToken()
-{
-#ifdef INVOKE_READLEXEME
-    %token = invoke NILCC %Token @ReadLexeme()
-        to     label %DoType
-        unwind label %Catch
-
-    Catch:
-            call ccc %c_int @putchar(%c_int ASCII_BANG)
-            %exceptionType = load %Word* @exceptionCode
-            %exception = insertvalue %Token {%c_int NIL_EXCEPTION, %Word 0},
-                                                       %Word %exceptionType, 1
-            ret %Token %exception
-DoType:
-#else
-    %token = call NILCC %Token @ReadLexeme()
-#endif
-
-    %tokenType = extractvalue %Token %token, 0
-
-    switch %c_int %tokenType, label %CantHappen [
-
-#ifdef INVOKE_READLEXEME
-        %c_int NIL_EXCEPTION,  label %BadException
-#else
-        %c_int NIL_EXCEPTION,  label %Exception
-#endif
-
-        %c_int ASCII_NEWLINE,  label %PassThrough
-
-        %c_int ASCII_LPAREN,   label %PassThrough
-        %c_int ASCII_RPAREN,   label %PassThrough
-        %c_int NIL_SYMBOL,     label %ReturnSymbol
-    ]
-
-; Different than CantHappen for testing purposes--will eventually go away
-; when I'm confident in invoke/unwind
-BadException:
-    cant_happen()
-    br label %BadException
-
-CantHappen:
-    cant_happen()
-    br label %CantHappen
-
-Exception:
-#ifdef INVOKE_READTOKEN
-    %exception = extractvalue %Token %token, 1
-    store %Word %exception, %Word* @exceptionCode
-    unwind
-#else
-    ret %Token %token
-#endif
-
-PassThrough:
-    ret %Token %token
-
-ReturnSymbol:
-    %lexemeWord = extractvalue %Token %token, 1
-    %lexeme = inttoptr %Word %lexemeWord to %c_char*
-    #ifndef NDEBUG
-    ; Check to see that the string is at least one character long
-    ; (since the lexer shouldn't ever produce an empty string)
-    %len = call ccc %c_size_t @strlen(%c_char* %lexeme)
-    %positive = icmp ugt %c_size_t %len, 0
-    assert(%positive)
-    ; Could assert that it's aligned as well.
-    #endif
-
-    ; Get the corresponding nil_symbol
-    %symbol = call NILCC %Exp @NewSymbol(%c_char* %lexeme)
-    %symbolWord = bitcast %Exp %symbol to %Word ; currently pointless
-    %newToken = insertvalue %Token %token, %Word %symbolWord, 1
-
-    ret %Token %newToken
-}
-
-;**********************************************************************
-; GetToken (public)
-;
-; A buffer to allow the parser a token of lookahead using UngetToken.
-; This greatly simplifies the interaction loop as well.
-;
-;**********************************************************************
-
-; One token lookahead for now.
-#define TOKEN_BUFFER_SIZE 1
-@tokenBuffer = internal global [TOKEN_BUFFER_SIZE x %Token] undef
-@tokenBufferCount = internal global %Word 0
-
-define NILCC %Token
-@GetToken()
-{
-    %numBuffered = load %Word* @tokenBufferCount
-    #ifndef DEBUG
-    %nonNegative = icmp sge %Word %numBuffered, 0
-    assert(%nonNegative)
-    #endif
-
-    %bufferEmpty = icmp eq %Word %numBuffered, 0
-    br i1 %bufferEmpty, label %BufferEmpty, label %BufferNotEmpty
-
-BufferEmpty:
-    %newToken = call NILCC %Token @ReadToken()
-    ret %Token %newToken
-
-BufferNotEmpty:
-    %index = sub %Word %numBuffered, 1
-    store %Word %index, %Word* @tokenBufferCount
-    %tokenPtr = getelementptr [TOKEN_BUFFER_SIZE x %Token]* @tokenBuffer,
-                         i64 0, %Word %index
-    %oldToken = load %Token* %tokenPtr
-    ret %Token %oldToken
-}
-
-;**********************************************************************
-; UngetToken (public)
-;
-;**********************************************************************
-
-define NILCC void
-@UngetToken(%Token %token)
-{
-    %numBuffered = load %Word* @tokenBufferCount
-    #ifndef DEBUG
-    %canAdd = icmp slt %Word %numBuffered, TOKEN_BUFFER_SIZE
-    assert(%canAdd)
-    #endif
-
-    %tokenPtr = getelementptr [TOKEN_BUFFER_SIZE x %Token]* @tokenBuffer,
-                         i64 0, %Word %numBuffered
-    store %Token %token, %Token* %tokenPtr
-
-    %newNumBuffered = add %Word %numBuffered, 1
-    store %Word %newNumBuffered, %Word* @tokenBufferCount
-
-    ret void
-}
-
-;**********************************************************************
-; Parser
-;
-; The beginnings of a parser module.
-;
-;**********************************************************************
-
-#define CONTPROMPTARRAY_LEN 5
-@contPromptArray = internal constant [CONTPROMPTARRAY_LEN x %c_char] c"--> \00"
-
-;**********************************************************************
-; ReadExp (public)
-;
-; The Nil parser, implemented as a mutually recursive pair of functions.
-;
-; Warning: here there be tygers.  Recursive tygers.
-;
-;**********************************************************************
-
-define NILCC %Token
-@ReadExp()
-{
-    br label %GetToken
-
-GetToken:
-    %token = call NILCC %Token @GetToken()
-
-    %tokenType = extractvalue %Token %token, 0
-
-    switch %c_int %tokenType, label %CantHappen [
-
-        %c_int ASCII_NEWLINE,  label %Newline
-
-        %c_int NIL_CELL,       label %CantHappen  ; Noted explicitly
-        %c_int NIL_SYMBOL,     label %ReturnToken
-
-        %c_int ASCII_LPAREN,   label %BeginList
-        %c_int ASCII_RPAREN,   label %EndList
-
-        %c_int NIL_EXCEPTION,  label %ReturnToken
-    ]
-
-Newline:
-    %promptStr = getelementptr [CONTPROMPTARRAY_LEN x %c_char]* @contPromptArray,
-                                                                i64 0, i64 0
-    call ccc %c_int @putstring(%c_char* %promptStr)
-    br label %GetToken
-
-CantHappen:
-    cant_happen()
-    br label %CantHappen
-
-ReturnToken:
-    %retToken = phi %Token [%token, %GetToken],
-                           [%token, %GetToken],
-                           [%listToken, %BeginList]
-    ret %Token %retToken
-
-EndList:
-    %lParenToken = insertvalue %Token {%c_int NIL_EXCEPTION, %Word undef},
-                                                   %Word NIL_EXTRA_RPAREN, 1
-     ret %Token %lParenToken
-
-BeginList:
-    ; Drop left paren
-    %listToken = call NILCC %Token @ReadList()
-    %listTokenType = extractvalue %Token %listToken, 0
-
-    %gotException = icmp eq %c_int %listTokenType, NIL_EXCEPTION
-    br i1 %gotException, label %ReturnToken, label %GotList
-
-GotList:
-    %endToken = call NILCC %Token @GetToken()
-    %endTokenType = extractvalue %Token %endToken, 0
-    %gotEndParen = icmp eq %c_int %endTokenType, ASCII_RPAREN
-    assert(%gotEndParen)
-    ret %Token %listToken
-}
-
-;**********************************************************************
-; ReadList (private)
-;
-;**********************************************************************
-
-define NILCC %Token
-@ReadList()
-{
-    br label %GetToken
-
-GetToken:
-    ; Peek at token
-    %token = call NILCC %Token @GetToken()
-    call NILCC void @UngetToken(%Token %token)
-
-    %tokenType = extractvalue %Token %token, 0
-    %notEndList = icmp ne %c_int %tokenType, ASCII_RPAREN
-    br i1 %notEndList, label %GetCAR, label %EndList
-
-EndList:
-    ret %Token {%c_int NIL_SYMBOL, %Word NIL_VALUE}
-
-GetCAR:
-    %carToken = call NILCC %Token @ReadExp()
-    %carTokenType = extractvalue %Token %carToken, 0
-
-    %gotCARException = icmp eq %c_int %carTokenType, NIL_EXCEPTION
-    br i1 %gotCARException, label %ReturnToken, label %GetCDR
-
-ReturnToken:
-    %retToken = phi %Token [%carToken, %GetCAR],
-                           [%cdrToken, %GetCDR]
-    ret %Token %retToken
-
-GetCDR:
-    %cdrToken = call NILCC %Token @ReadList()
-    %cdrTokenType = extractvalue %Token  %cdrToken, 0
-    %gotCDRException = icmp eq %c_int %cdrTokenType, NIL_EXCEPTION
-    br i1 %gotCDRException, label %ReturnToken, label %ReturnCons
-
-ReturnCons:
-    %car = extractvalue %Token %carToken, 1
-    %cdr = extractvalue %Token %cdrToken, 1
-    %cell = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
-    %cellToken = insertvalue %Token {%c_int NIL_CELL, %Word undef},
-                                                      %Word %cell, 1
-    ret %Token %cellToken
-}
-
-;**********************************************************************
-; Read
-;
-;**********************************************************************
-
-define NILCC %Token
-@Read()
-{
-    %firstToken = call NILCC %Token @GetToken()
-    %firstTokenType = extractvalue %Token %firstToken, 0
-
-    switch %c_int %firstTokenType, label %Other [
-
-        %c_int ASCII_NEWLINE,  label %Newline
-    ]
-
-Other:
-    call NILCC void @UngetToken(%Token %firstToken)
-    %token = call NILCC %Token @ReadExp()
-    ret %Token %token
-
-Newline:
-    ret %Token %firstToken
-}
 
 ;**********************************************************************
 ; DiscardLine
@@ -372,10 +65,10 @@ define NILCC void
     br label %Loop
 
 Loop:
-    %token = call NILCC %Token @GetToken()
-    %tokenType = extractvalue %Token %token, 0
+    %parseExp = call NILCC %ParseExp @GetParseExp()
+    %parseExpType = extractvalue %ParseExp %parseExp, 0
 
-    switch %c_int %tokenType, label %Loop [
+    switch %c_int %parseExpType, label %Loop [
 
         %c_int NIL_EXCEPTION, label  %Exception
 
@@ -383,13 +76,13 @@ Loop:
     ]
 
 Exception:
-    %exception = extractvalue %Token %token, 1
-    switch %Word %exception, label %CantHappen [
+    %exception = extractvalue %ParseExp %parseExp, 1
+    switch %Exp %exception, label %CantHappen [
 
-        %Word NIL_EOF,          label %Done
-        %Word NIL_IOERROR,      label %Done
-        %Word NIL_BADCHAR,      label %Loop
-        %Word NIL_EXTRA_RPAREN, label %Loop
+        %Exp NIL_EOF,          label %Done
+        %Exp NIL_IOERROR,      label %Done
+        %Exp NIL_BADCHAR,      label %Loop
+        %Exp NIL_EXTRA_RPAREN, label %Loop
     ]
 
 CantHappen:
@@ -397,7 +90,25 @@ CantHappen:
     br label %CantHappen
 
 Done:
-    call NILCC void @UngetToken(%Token %token)
+    call NILCC void @UngetParseExp(%ParseExp %parseExp)
+    ret void
+}
+
+;**********************************************************************
+; NewlineIf
+;
+;**********************************************************************
+
+define NILCC void
+@NewlineIf(i1 %cond)
+{
+    br i1 %cond, label %Newline, label %Done
+
+Newline:
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+    br label %Done
+
+Done:
     ret void
 }
 
@@ -411,10 +122,12 @@ Done:
     c"Welcome to nil v0.0.5.  Press <ctrl>-D at the prompt to exit.\00"
 
 #define PROMPTARRAY_LEN 6
-@promptArray = internal constant [PROMPTARRAY_LEN x %c_char] c"nil> \00"
+@promptArray = internal constant [PROMPTARRAY_LEN x %c_char]
+    c"nil> \00"
 
 #define KNOWNARRAY_LEN 16
-@knownArray = internal constant [KNOWNARRAY_LEN x %c_char] c"Known strings: \00"
+@knownArray = internal constant [KNOWNARRAY_LEN x %c_char]
+    c"Known strings: \00"
 
 #define BADCHARARRAY_LEN 16
 @badCharArray = internal constant [BADCHARARRAY_LEN x %c_char]
@@ -437,7 +150,7 @@ define %c_int
 @main(%c_int %argc, %c_char **%argv)
 {
     ; This flag is necessary to avoid double-spacing the prompt when
-    ; nothing was entered.
+    ; nothing is entered.
     %hadInputPtr = alloca i1
     store i1 0, i1* %hadInputPtr
 
@@ -463,20 +176,12 @@ PrintPrompt:
     br label %ReadExp
 
 ReadExp:
-#ifdef INVOKE_READTOKEN
-    %token = invoke NILCC %Token @GetToken() to     label %GotChar
-                                              unwind label %Catch
-
-    Catch:
-        call ccc %c_int @putchar(%c_int ASCII_BANG)
-        br label %Exception
-
-GotChar:
-#else
-    ;%token = call NILCC %Token @GetToken()
-    %token = call NILCC %Token @Read()
-#endif
-    %code = extractvalue %Token %token, 0
+    %parseExp = call NILCC %ParseExp @Read()
+    %code = extractvalue %ParseExp %parseExp, 0
+    ; Because of single assignment, this is more convenient
+    ; to load here even though only Newline and the exception
+    ; handlers need it
+    %hadInput = load i1* %hadInputPtr
 
     switch %c_int %code, label %PrintChar [
 
@@ -495,38 +200,26 @@ PrintChar:
     br label %ReadExp
 
 PrintExp:
-    %expWord = extractvalue %Token %token, 1
-    %exp = bitcast %Word %expWord to %Exp
+    %exp = extractvalue %ParseExp %parseExp, 1
     call NILCC void @PrintExp(%Exp %exp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
     br label %ReadExp
 
 NewLine:
-    %hadInput = load i1* %hadInputPtr
-    br i1 %hadInput, label %IfHadInput, label %EndIfHadInput
-    IfHadInput:
-        call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
-        br label %EndIfHadInput
-    EndIfHadInput:
-
+    call NILCC void @NewlineIf(i1 %hadInput)
     store i1 0, i1* %hadInputPtr
     br label %PrintPrompt
 
 Exception:
+    %exception = extractvalue %ParseExp %parseExp, 1
 
-#ifdef INVOKE_READTOKEN
-    %exception = load %Word* @exceptionCode
-#else
-    %exception = extractvalue %Token %token, 1
-#endif
+    switch %Exp %exception, label %CantHappen [
 
-    switch %Word %exception, label %CantHappen [
-
-        %Word NIL_EOF,          label %Exit
-        %Word NIL_IOERROR,      label %ExitIOError
-        %Word NIL_BADCHAR,      label %WarnBadChar
-        %Word NIL_EXTRA_RPAREN, label %ExtraRParen
+        %Exp NIL_EOF,          label %Exit
+        %Exp NIL_IOERROR,      label %ExitIOError
+        %Exp NIL_BADCHAR,      label %WarnBadChar
+        %Exp NIL_EXTRA_RPAREN, label %ExtraRParen
     ]
 
 CantHappen:
@@ -540,6 +233,7 @@ ExitIOError:
     br label %Exit
 
 WarnBadChar:
+    call NILCC void @NewlineIf(i1 %hadInput)
     %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
                         @badCharArray, i64 0, i64 0
     call ccc %c_int @puts(%c_char* %badCharMsg)
@@ -548,6 +242,7 @@ WarnBadChar:
     br label %ReadExp
 
 ExtraRParen:
+    call NILCC void @NewlineIf(i1 %hadInput)
     %rParenMsg = getelementptr [RPARENARRAY_LEN x %c_char]*
                         @rParenArray, i64 0, i64 0
     call ccc %c_int @puts(%c_char* %rParenMsg)

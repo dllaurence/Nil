@@ -1,0 +1,23 @@
+#ifndef PARSE_LLH
+#define PARSE_LLH
+
+;**********************************************************************
+; parse.llh
+;
+; Public declarations for the parser.
+;
+; Copyright 2009-2010 by Dustin Laurence.  Distributed under the terms of
+; the LGPLv3.
+;
+;**********************************************************************
+
+#include "nil.llh"
+
+    %ParseExp = type {%c_int, %Exp}
+
+    declare NILCC %ParseExp @GetParseExp()
+    declare NILCC void @UngetParseExp(%ParseExp %parseExp)
+
+    declare NILCC %ParseExp @Read()
+
+#endif
