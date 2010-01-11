@@ -60,7 +60,9 @@ besides printing what you typed).
 The interaction loop quits when EOF or an I/O error is encountered, and warns
 about bad characters on the input.  It isn't perfect, but it is tolerable for
 the moment and even allows you to continue with a special continuation prompt
-if you hit return without closing all your parens.
+if you hit return without closing all your parens.  The major input bug is that
+it doesn't know about escape sequences, so trying to do cursor movement at the
+command line will enter some strange strings into the known strings table.
 
 At this point the lexer accepts more characters as symbol characters than even
 lisp should, but that's not worth fixing right now.
@@ -92,8 +94,7 @@ Main Nil implementation files:
 
 nil.llh       Global declarations (types, #defines) for all source files.
 
-nil.llm       has main(), and the parser not yet broken out into its
-              own module.  Also documentation you will want to read.
+nil.llm       has main(), and documentation you will want to read.
 
 System support files:
 
@@ -116,14 +117,15 @@ system.llh    #includes c_defs.llh, declares prototypes of useful libc
               calls) plus the prototypes for the functions in system_c.c
               and system_ll.llm, defines ASCII convenience constants, etc.
 
-lex.ll[hm]    The nil lexer.  This should only depend on c_defs, system,
-              and nil.llh--nothing here should use the expression code.
-              That means the Lexemes get turned into Nil expressions
-              elsewhere.
-
 exp.ll[hm]    The expression implementation, plus support code such as
               the unique string list.
 
 memory.ll[hm] The memory-handling code is here, both for strings (the
               unique string facility) and cells.
 
+lex.ll[hm]    The nil lexer.  This should only depend on c_defs, system,
+              and nil.llh--nothing here should use the expression code.
+              That means the Lexemes get turned into Nil expressions
+              in the parser.
+
+parse.ll[hm]  The nil parser.

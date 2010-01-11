@@ -150,7 +150,7 @@ define %c_int
 @main(%c_int %argc, %c_char **%argv)
 {
     ; This flag is necessary to avoid double-spacing the prompt when
-    ; nothing is entered.
+    ; nothing was entered.
     %hadInputPtr = alloca i1
     store i1 0, i1* %hadInputPtr
 

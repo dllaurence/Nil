@@ -31,24 +31,6 @@
     #define WORD_T_SIZEOF C_INTPTR_T_SIZEOF
     #define WORD_T_BITSOF C_INTPTR_T_BITSOF
 
-; The fundamental handle type by which we manipulate expressions.
-; Placed here instead of in exp.llh because it decouples the headers
-; of modules that use exp but are well-behaved enough to not take
-; or return implementation types.
-
-; Everything in Nil is an expression, implemented as a pointer to an
-; object (of the low-level malloc() sort, not the Smalltalk or even
-; C++ sort).  The pointer is represented as an integer because exp
-; will be storing type tags in the low-order bits, and need to
-; manipulate the bits to know the type before we know how to manipulate
-; the pointer.
-
-; Naming convention note; this isn't nil_exp because I don't think
-; lisp has or needs an explicit name for this type--*EVERYTHING* is this
-; type, always.
-
-    %Exp = type %Word
-
 ; Codes common to multiple modules
 
     ; Nil defines its own values independent of what libc or system
