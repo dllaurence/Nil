@@ -66,6 +66,8 @@
 ; aren't using it.
 #undef INVOKE_READLEXEME
 
+#define INVOKE_READTOKEN
+
 define NILCC %Token
 @ReadToken()
 {
@@ -113,7 +115,13 @@ CantHappen:
     br label %CantHappen
 
 Exception:
+#ifdef INVOKE_READTOKEN
+    %exception = extractvalue %Token %token, 1
+    store %Word %exception, %Word* @exceptionCode
+    unwind
+#else
     ret %Token %token
+#endif
 
 PassThrough:
     ret %Token %token
@@ -422,7 +430,18 @@ PrintPrompt:
     br label %ReadChar
 
 ReadChar:
+#ifdef INVOKE_READTOKEN
+    %token = invoke NILCC %Token @ReadToken() to     label %GotChar
+                                              unwind label %Catch
+
+    Catch:
+        call ccc %c_int @putchar(%c_int ASCII_BANG)
+        br label %Exception
+
+GotChar:
+#else
     %token = call NILCC %Token @ReadToken()
+#endif
     %code = extractvalue %Token %token, 0
 
     switch %c_int %code, label %PrintChar [
@@ -462,7 +481,11 @@ NewLine:
 
 Exception:
 
+#ifdef INVOKE_READTOKEN
+    %exception = load %Word* @exceptionCode
+#else
     %exception = extractvalue %Token %token, 1
+#endif
 
     switch %Word %exception, label %CantHappen [
 
