@@ -46,22 +46,16 @@ define NILCC i1
 }
 
 ;**********************************************************************
-; NewCell
+; NewMemory
 ;
-; Returns a newly allocated cell.  Its fields must be set before use.
+; Returns a newly allocated chunk of raw memory guaranteed not to be null
+; and properly aligned.
 ;
 ;**********************************************************************
 
-define NILCC %nil_cell*
-@NewCell()
+define NILCC i8*
+@NewMemory(%c_size_t %size)
 {
-    ; Compute sizeof(nil_cell)
-    ; FIXME: this shouldn't be done at run-time
-    %sizeAddr = getelementptr %nil_cell* null, i64 1
-    %size = ptrtoint %nil_cell* %sizeAddr to %c_size_t
-
-    ; Get a new cell
-    ; FIXME: put all of this junk into the memory module
     %newMem = call ccc i8* @malloc(%c_size_t %size)
     #ifndef NDEBUG
     ; Check that we have memory
@@ -71,9 +65,8 @@ define NILCC %nil_cell*
     %aligned = call NILCC i1 @Aligned(i8* %newMem)
     assert(%aligned)
     #endif
-    %newCell = bitcast i8* %newMem to %nil_cell*
 
-    ret %nil_cell* %newCell
+    ret i8* %newMem
 }
 
 ;**********************************************************************

@@ -31,27 +31,39 @@
 
     %Exp = type %Word
 
+    ; This is our representation, though we don't actually need it explicit
+    ; It would have been better to use this anyway, but I did not.
+    ;%nil_symbol = type %c_char
+
     %nil_cell = type {%Exp, %Exp}
+
+    ; Internal representation--a primitive is a native function over
+    ; expressions.  The word is the required number of arguments so
+    ; the interpreter can do some sanity checking, and the string is
+    ; a printing format
+    %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*}
 
 ; Tag field type values.
 
     ; This and the *_TAG constants are the only places where the code
     ; assumes the size of the tag field, so it can be extended as needed
     ; simply by changing the type here.
-    %Tag = type i3
-    #define MAX_TAG 7
+    %Tag = type i2
+    #define MAX_TAG 3
 
     ; For now, these values are randomly chosen to ensure the code
     ; is clean and not depending on particular bit patterns.  They should
     ; fit insize a %Tag type (or they'll be silently wrapped), but otherwise
     ; are arbitrary.
-    #define SYMBOL_TAG  3
-    #define   CELL_TAG  7
+    #define    SYMBOL_TAG  0
+    #define      CELL_TAG  1
+    #define PRIMITIVE_TAG  2
 
-    ; We define Nil as the null symbol instead of the null cell because
-    ; it makes testing for a non-null cell a single comparison.  The
-    ; code *does* assume this (most especially it assumes NIL does not
-    ; have CELL_TAG.
+    ; We define Nil as the null symbol (or at least not as the null CELL,
+    ; which is an obvious choice as nil is the empty list) instead of the
+    ; null cell because it makes testing for a non-null cell a single
+    ; comparison.  The code *does* assume this (most especially it assumes
+    ; NIL does not have CELL_TAG).
     #define   NIL_VALUE SYMBOL_TAG
 
 ; Low-level manipulation of the tags embedded in the low-order bits.
@@ -72,11 +84,15 @@
     declare NILCC %Exp       @nil_cell2Exp(%nil_cell* %cell)
     declare NILCC %nil_cell* @Exp2nil_cell(%Exp       %exp)
 
+    ; Primitive
+    declare NILCC %Exp            @nil_primitive2Exp(%nil_primitive* %prim)
+    declare NILCC %nil_primitive* @Exp2nil_primitive(%Exp            %exp)
+
 ; The "seven primitive operators" of Paul Graham's paper, plus
 ; internal forms
 
     ; #2 -- atom
-    declare NILCC i1 @Atom(%Exp %exp)
+    declare NILCC i1 @Atom(%Exp %exp) ; Internal form
 
     ; #4 -- car
     declare NILCC %Exp @nil_car(%Exp %exp)
@@ -90,10 +106,15 @@
 ; Other tests
 
     declare NILCC i1 @Cell(%Exp %exp)
+    declare NILCC i1 @Primitive(%Exp %exp)
 
 ; Other symbol manipulations
 
-    declare NILCC %Exp @NewSymbol(%c_char* %name)
+    ; The interfaces are somewhat inconsistent, but convenient
+    declare NILCC %Exp       @NewSymbol(%c_char* %name)
+    declare NILCC %nil_cell* @NewCell()
+    declare NILCC %Exp       @NewPrimitive(%Exp (%Exp)*, %Word %argCount,
+                                           %c_char* %printForm)
 
 ; Expression I/O
     declare NILCC void @PrintExp(%Exp %exp)

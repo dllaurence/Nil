@@ -15,7 +15,7 @@
 
     declare NILCC i1 @Aligned(i8* %ptr)
 
-    declare NILCC %nil_cell* @NewCell()
+    declare NILCC i8* @NewMemory(%c_size_t %size)
 
     ; String uniqueifying
 

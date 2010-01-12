@@ -54,6 +54,87 @@
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
 
+#if 0
+;**********************************************************************
+; Eval
+;
+;**********************************************************************
+
+
+
+define NILCC %Exp
+@Eval(%Exp %exp)
+{
+    %tag = call NILCC %Tag @GetTag(%Exp %exp)
+
+    switch %Tag %tag, label %CantHappen [
+
+        ; Remember that here we will only see types produced by the
+        ; parser
+        %Tag SYMBOL_TAG,    label %SymbolTag
+        %Tag CELL_TAG,      label %Cell
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+SymbolTag:
+    ; All symbols are self-evaluating for now
+    ret %Exp %exp
+
+Cell:
+    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %args = call NILCC %Exp @EvalList(%Exp %cdr)
+    ; Or, possibly, cons them together so (apply fn arg*) works?
+    %result = call NILCC %Exp @Apply(%Exp %car, %Exp %args)
+    ret %Exp %result
+}
+
+;**********************************************************************
+; Apply
+;
+;**********************************************************************
+
+define NILCC %Exp
+@Apply(%Exp %fn, %Exp %args)
+{
+    ; For now, just say what we'd do
+    %applySymbol = call NILCC %Exp @NewSymbol(%c_char* %applySymbolPtr)
+
+}
+
+;**********************************************************************
+; EvalList
+;
+;**********************************************************************
+
+define NILCC %Exp
+@EvalList(%Exp %exp)
+{
+    %isAtom = call NILCC i1 @Atom(%Exp %exp)
+    br i1 %isAtom, label %Atom, label %Cell
+
+Atom:
+    ; This would be weird--evaluating a dotted pair, basically
+    ; FIXME: obviously this has to report an error, not explode all
+    ; over the user.
+    @cant_happen()
+
+Cell:
+    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %first = call NILCC %Exp @Eval(%Exp %car)
+
+    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %rest = call NILCC %Exp @EvalList(%Exp %cdr)
+
+    %cons = call NILCC %Exp @nil_cons(%Exp %first, %Exp %rest)
+
+    ret %Exp %cons
+}
+#endif
+
 ;**********************************************************************
 ; DiscardLine
 ;

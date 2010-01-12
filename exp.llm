@@ -39,6 +39,7 @@
 
     declare NILCC void @PrintAtom(%Exp %exp)
     declare NILCC void @PrintCDR(%Exp %exp)
+    declare NILCC void @PrintPrimitive(%Exp %exp)
 
 ;**********************************************************************
 ; Tag manipulation functions
@@ -285,6 +286,65 @@ define NILCC %nil_cell*
 }
 
 ;**********************************************************************
+; nil_primitive2Exp
+;
+; Converts the nil_primitive* pointer to an Expression with the correct
+; tag.  THIS IS ONLY A CONVERSION FUNCTION and has no idea if the
+; pointer actually points to anything sane.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@nil_primitive2Exp(%nil_primitive* %prim)
+{
+        ; FIXME: what if %prim is null?  This is almost certainly the wrong
+        ; behavior but what is the correct lisp semantics?
+        ; need to be careful about the precise meaning of nil in lisp.
+        ; For now, assert that it isn't so it can't silently do The Wrong
+        ; Thing
+        %notNull = icmp ne %nil_primitive* %prim, null
+        assert(%notNull)
+
+        #ifndef NDEBUG
+        ; Also it obviously must be aligned
+        %voidPtr = bitcast %nil_primitive* %prim to i8*
+        %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
+        assert(%aligned)
+        #endif
+
+    %untaggedExp = ptrtoint %nil_primitive* %prim to %Exp
+    %exp = call NILCC %Exp @AddTag(%Exp %untaggedExp, %Tag PRIMITIVE_TAG)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; Exp2nil_primitive
+;
+; Converts an Expression to a cell pointer.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %nil_primitive*
+@Exp2nil_primitive(%Exp %exp)
+{
+        #ifndef NDEBUG
+        %tag = call NILCC %Tag @GetTag(%Exp %exp)
+        %isPrimitive = icmp eq %Tag %tag, PRIMITIVE_TAG
+        assert(%isPrimitive)
+        #endif
+
+    %untaggedExp = call NILCC %Exp @ClearTag(%Exp %exp)
+    %prim = inttoptr %Exp %untaggedExp to %nil_primitive*
+
+    ret %nil_primitive* %prim
+}
+
+;**********************************************************************
 ; The Seven Operators
 ;
 ; These are supposed to be a minimal set of primitive lisp operators
@@ -375,6 +435,24 @@ define NILCC i1
 }
 
 ;**********************************************************************
+; Primitive
+;
+; Returns true if the expression is a primitive.
+;
+;**********************************************************************
+
+define NILCC i1
+@Primitive(%Exp %exp)
+{
+    ; Implemented in a way that allows expansion to other types of
+    ; atoms besides symbols
+    %tag = call NILCC %Tag @GetTag(%Exp %exp)
+    %primitivep = icmp eq %Tag %tag, PRIMITIVE_TAG
+
+    ret i1 %primitivep
+}
+
+;**********************************************************************
 ; NewSymbol
 ;
 ; Returns a symbol whose name is the value of the given string.
@@ -397,6 +475,83 @@ define NILCC %Exp
     %string = call NILCC %c_char* @UniqueString(%c_char* %name)
 
     %exp = call NILCC %Exp @str2Exp(%c_char* %string)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; NewCell
+;
+; Returns a newly allocated cell.  Its fields must be set before use.
+; This really isn't intended to be called directly--use nil_cons.
+;
+;**********************************************************************
+
+define NILCC %nil_cell*
+@NewCell()
+{
+    ; Compute sizeof(nil_cell)
+    ; FIXME: this shouldn't be done at run-time
+    %sizeAddr = getelementptr %nil_cell* null, i64 1
+    %size = ptrtoint %nil_cell* %sizeAddr to %c_size_t
+
+    ; Get a new cell
+    %newMem = call NILCC i8* @NewMemory(%c_size_t %size)
+    %newCell = bitcast i8* %newMem to %nil_cell*
+
+    ret %nil_cell* %newCell
+}
+
+;**********************************************************************
+; NewPrimitive
+;
+; Constructs a new primitive.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm)
+{
+        #ifndef NDEBUG
+        ; Better not be a null function pointer
+        %notNull = icmp ne %Exp (%Exp)* %fnPtr, null
+        assert(%notNull)
+
+        ; Must either have a non-negative argument count or -1 for "any"
+        %argCountOK = icmp sge %Word %argCount, -1
+        assert(%argCountOK)
+
+        ; Check to see that the string is at least one character long
+        ; (The empty string is *not* a valid primitive name!)
+        %len = call ccc %c_size_t @strlen(%c_char* %printForm)
+        %positive = icmp ugt %c_size_t %len, 0
+        assert(%positive)
+        #endif
+
+    ; Compute sizeof(nil_primitive)
+    ; FIXME: this shouldn't be done at run-time
+    %sizeAddr = getelementptr %nil_primitive* null, i64 1
+    %size = ptrtoint %nil_primitive* %sizeAddr to %c_size_t
+
+    %newMem = call NILCC i8* @NewMemory(%c_size_t %size)
+    %newPrim = bitcast i8* %newMem to %nil_primitive*
+
+    ; Set function pointer
+    %fnFieldPtr = getelementptr %nil_primitive* %newPrim, i64 0, i32 0
+    store %Exp (%Exp)* %fnPtr, %Exp (%Exp)** %fnFieldPtr
+
+    ; Set the argument count
+    %argCountField = getelementptr %nil_primitive* %newPrim, i64 0, i32 1
+    store %Word %argCount, %Word* %argCountField
+
+    ; Set the print form
+    ; Note that we don't uniqueify the print form--it's not accessible
+    ; from the language (though it could be), and could be a string
+    ; constant.
+    %printFormField = getelementptr %nil_primitive* %newPrim, i64 0, i32 2
+    store %c_char* %printForm, %c_char** %printFormField
+
+    %exp = call NILCC %Exp @nil_primitive2Exp(%nil_primitive* %newPrim)
 
     ret %Exp %exp
 }
@@ -443,8 +598,9 @@ define NILCC void
 
     switch %Tag %tag, label %CantHappen [
 
-        %Tag SYMBOL_TAG, label %SymbolTag
-        %Tag   CELL_TAG, label %CantHappen
+        %Tag SYMBOL_TAG,    label %SymbolTag
+        %Tag   CELL_TAG,    label %CantHappen
+        %Tag PRIMITIVE_TAG, label %IsPrimitive
     ]
 
 CantHappen:
@@ -463,6 +619,13 @@ IsSymbol:
 IsNil:
     call ccc %c_int @putchar(%c_int ASCII_LPAREN)
     call ccc %c_int @putchar(%c_int ASCII_RPAREN)
+    ret void
+
+IsPrimitive:
+    %prim = call NILCC %nil_primitive* @Exp2nil_primitive(%Exp %exp)
+    %printFormField = getelementptr %nil_primitive* %prim, i64 0, i32 2
+    %printForm = load %c_char** %printFormField
+    call ccc %c_int @putstring(%c_char* %printForm)
     ret void
 }
 
