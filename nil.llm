@@ -55,19 +55,31 @@
     @exceptionCode = global %Word 0
 
 ;**********************************************************************
+; EnvLookup
+;
+;**********************************************************************
+
+define NILCC %Exp
+@EnvLookup(%Exp %exp, %Exp %env)
+{
+    ; All symbols are self-evaluating for now
+    ret %Exp %exp
+}
+
+;**********************************************************************
 ; Eval
 ;
 ;**********************************************************************
 
 define NILCC %Exp
-@Eval(%Exp %exp)
+@Eval(%Exp %exp, %Exp %env)
 {
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
 
     switch %Tag %tag, label %CantHappen [
 
         ; Remember that here we will only see types produced by the
-        ; parser
+        ; parser, not all types in the language
         %Tag CELL_TAG,      label %Cell
         %Tag SYMBOL_TAG,    label %SymbolTag
     ]
@@ -79,14 +91,14 @@ CantHappen:
 Cell:
     %car = call NILCC %Exp @nil_car(%Exp %exp)
     %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
-    %args = call NILCC %Exp @EvalList(%Exp %cdr)
+    %args = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
     ; Or, possibly, cons them together so (apply fn arg*) works?
-    %result = call NILCC %Exp @Apply(%Exp %car, %Exp %args)
+    %result = call NILCC %Exp @Apply(%Exp %car, %Exp %args, %Exp %env)
     ret %Exp %result
 
 SymbolTag:
-    ; All symbols are self-evaluating for now
-    ret %Exp %exp
+    %evalExp = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %env)
+    ret %Exp %evalExp
 }
 
 ;**********************************************************************
@@ -99,7 +111,7 @@ SymbolTag:
     c"apply\00"
 
 define NILCC %Exp
-@Apply(%Exp %fnExp, %Exp %args)
+@Apply(%Exp %fnExp, %Exp %args, %Exp %env)
 {
     ; For now, just say what we'd do
     %applyPtr = getelementptr [APPLYARRAY_LEN x %c_char]* @applyArray,
@@ -107,8 +119,9 @@ define NILCC %Exp
 
     %applySymbol = call NILCC %Exp @NewSymbol(%c_char* %applyPtr)
 
-    %fn = call NILCC %Exp @Eval(%Exp %fnExp)
+    %fn = call NILCC %Exp @Eval(%Exp %fnExp, %Exp %env)
 
+    ; For now, just display what we'd do
     %applyArgs = call NILCC %Exp @nil_cons(%Exp %fn, %Exp %args)
     %result = call NILCC %Exp @nil_cons(%Exp %applySymbol, %Exp %applyArgs)
 
@@ -121,7 +134,7 @@ define NILCC %Exp
 ;**********************************************************************
 
 define NILCC %Exp
-@EvalList(%Exp %exp)
+@EvalList(%Exp %exp, %Exp %env)
 {
     %isAtom = call NILCC i1 @Atom(%Exp %exp)
     br i1 %isAtom, label %Atom, label %Cell
@@ -138,10 +151,10 @@ Atom:
 
 Cell:
     %car = call NILCC %Exp @nil_car(%Exp %exp)
-    %first = call NILCC %Exp @Eval(%Exp %car)
+    %first = call NILCC %Exp @Eval(%Exp %car, %Exp %env)
 
     %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
-    %rest = call NILCC %Exp @EvalList(%Exp %cdr)
+    %rest = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
 
     %cons = call NILCC %Exp @nil_cons(%Exp %first, %Exp %rest)
 
@@ -295,7 +308,7 @@ PrintChar:
 
 EvalExp:
     %unevalExp = extractvalue %ParseExp %parseExp, 1
-    %exp = call NILCC %Exp @Eval(%Exp %unevalExp)
+    %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp NIL_VALUE)
     call NILCC void @PrintExp(%Exp %exp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
