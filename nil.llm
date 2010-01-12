@@ -54,13 +54,10 @@
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
 
-#if 0
 ;**********************************************************************
 ; Eval
 ;
 ;**********************************************************************
-
-
 
 define NILCC %Exp
 @Eval(%Exp %exp)
@@ -71,17 +68,13 @@ define NILCC %Exp
 
         ; Remember that here we will only see types produced by the
         ; parser
-        %Tag SYMBOL_TAG,    label %SymbolTag
         %Tag CELL_TAG,      label %Cell
+        %Tag SYMBOL_TAG,    label %SymbolTag
     ]
 
 CantHappen:
     cant_happen()
     br label %CantHappen
-
-SymbolTag:
-    ; All symbols are self-evaluating for now
-    ret %Exp %exp
 
 Cell:
     %car = call NILCC %Exp @nil_car(%Exp %exp)
@@ -90,6 +83,10 @@ Cell:
     ; Or, possibly, cons them together so (apply fn arg*) works?
     %result = call NILCC %Exp @Apply(%Exp %car, %Exp %args)
     ret %Exp %result
+
+SymbolTag:
+    ; All symbols are self-evaluating for now
+    ret %Exp %exp
 }
 
 ;**********************************************************************
@@ -97,12 +94,25 @@ Cell:
 ;
 ;**********************************************************************
 
+#define APPLYARRAY_LEN 6
+@applyArray = internal constant [APPLYARRAY_LEN x %c_char]
+    c"apply\00"
+
 define NILCC %Exp
-@Apply(%Exp %fn, %Exp %args)
+@Apply(%Exp %fnExp, %Exp %args)
 {
     ; For now, just say what we'd do
-    %applySymbol = call NILCC %Exp @NewSymbol(%c_char* %applySymbolPtr)
+    %applyPtr = getelementptr [APPLYARRAY_LEN x %c_char]* @applyArray,
+                                      i64 0, i64 0
 
+    %applySymbol = call NILCC %Exp @NewSymbol(%c_char* %applyPtr)
+
+    %fn = call NILCC %Exp @Eval(%Exp %fnExp)
+
+    %applyArgs = call NILCC %Exp @nil_cons(%Exp %fn, %Exp %args)
+    %result = call NILCC %Exp @nil_cons(%Exp %applySymbol, %Exp %applyArgs)
+
+    ret %Exp %result
 }
 
 ;**********************************************************************
@@ -117,10 +127,14 @@ define NILCC %Exp
     br i1 %isAtom, label %Atom, label %Cell
 
 Atom:
-    ; This would be weird--evaluating a dotted pair, basically
+    %isNil = icmp eq %Exp %exp, NIL_VALUE
+
+    ; Non-nil would be weird--evaluating a dotted pair, basically
     ; FIXME: obviously this has to report an error, not explode all
-    ; over the user.
-    @cant_happen()
+    ; over the user.  There isn't yet any way for the user to cause
+    ; this though.
+    assert(%isNil)
+    ret %Exp %exp
 
 Cell:
     %car = call NILCC %Exp @nil_car(%Exp %exp)
@@ -133,7 +147,6 @@ Cell:
 
     ret %Exp %cons
 }
-#endif
 
 ;**********************************************************************
 ; DiscardLine
@@ -266,8 +279,8 @@ ReadExp:
 
     switch %c_int %code, label %PrintChar [
 
-        %c_int NIL_SYMBOL,   label   %PrintExp
-        %c_int NIL_CELL,     label   %PrintExp
+        %c_int NIL_SYMBOL,   label   %EvalExp
+        %c_int NIL_CELL,     label   %EvalExp
 
         %c_int ASCII_NEWLINE,  label %NewLine
 
@@ -280,8 +293,9 @@ PrintChar:
     store i1 1, i1* %hadInputPtr
     br label %ReadExp
 
-PrintExp:
-    %exp = extractvalue %ParseExp %parseExp, 1
+EvalExp:
+    %unevalExp = extractvalue %ParseExp %parseExp, 1
+    %exp = call NILCC %Exp @Eval(%Exp %unevalExp)
     call NILCC void @PrintExp(%Exp %exp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr
