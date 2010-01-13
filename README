@@ -4,6 +4,8 @@ README
 
 ChangeLog:
 
+    v0.0.6    * Evaluator skeleton.
+
     v0.0.5    * Parses the input correctly.
 
     v0.0.4.p1 * Cleanup release preparatory to parsing--the only visible
@@ -52,10 +54,10 @@ Running:
 
 Type "./nil" in the build directory and behold the glory.
 
-In v0.0.5 Nil properly (we think) parses its input and prints the parsed (but
-unevaluated) expressions.  The list of known strings is printed before each
-prompt (this is mostly for debugging, but also shows that it is doing something
-besides printing what you typed).
+In Nil 0.0.6 a skeleton evaluator recurses over the parsed expressions and
+inserts 'apply' into every combination where apply would act.  The list of
+known strings is printed before each prompt (this is mostly for debugging, but
+also shows that it is doing something besides printing what you typed).
 
 The interaction loop quits when EOF or an I/O error is encountered, and warns
 about bad characters on the input.  It isn't perfect, but it is tolerable for
@@ -94,7 +96,8 @@ Main Nil implementation files:
 
 nil.llh       Global declarations (types, #defines) for all source files.
 
-nil.llm       has main(), and documentation you will want to read.
+nil.llm       has main(), and documentation you will want to read.  Also
+              the skeleton evaluator being developed.
 
 System support files:
 
