@@ -51,7 +51,6 @@
     ; are arbitrary.
     #define    SYMBOL_TAG  0
     #define      CELL_TAG  1
-    #define PRIMITIVE_TAG  2
 
     ; We define Nil as the null symbol (or at least not as the null CELL,
     ; which is an obvious choice as nil is the empty list) instead of the
@@ -105,7 +104,6 @@
 
     declare NILCC i1 @IsSymbol(%Exp %exp)
     declare NILCC i1 @IsCell(%Exp %exp)
-    declare NILCC i1 @IsPrimitive(%Exp %exp)
     declare NILCC i1 @IsNil(%Exp %exp)
     declare NILCC i1 @NotNull(%Exp %exp)
 
@@ -114,8 +112,6 @@
     ; The interfaces are somewhat inconsistent, but convenient
     declare NILCC %Exp       @NewSymbol(%c_char* %name)
     declare NILCC %nil_cell* @NewCell()
-    declare NILCC %Exp       @NewPrimitive(%Exp (%Exp)*, %Word %argCount,
-                                           %c_char* %printForm)
 
 ; Expression I/O
     declare NILCC void @PrintExp(%Exp %exp)

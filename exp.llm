@@ -457,21 +457,6 @@ define NILCC i1
 }
 
 ;**********************************************************************
-; IsPrimitive
-;
-; Returns true if the expression is a primitive.
-;
-;**********************************************************************
-
-define NILCC i1
-@IsPrimitive(%Exp %exp)
-{
-    %primitivep = call NILCC i1 @TagIs(%Exp %exp, %Tag PRIMITIVE_TAG)
-
-    ret i1 %primitivep
-}
-
-;**********************************************************************
 ; IsNil
 ;
 ; Returns true if the expression is nil.
@@ -549,60 +534,6 @@ define NILCC %nil_cell*
     %newCell = bitcast i8* %newMem to %nil_cell*
 
     ret %nil_cell* %newCell
-}
-
-;**********************************************************************
-; NewPrimitive
-;
-; Constructs a new primitive.
-;
-;**********************************************************************
-
-define NILCC %Exp
-@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm)
-{
-        #ifndef NDEBUG
-        ; Better not be a null function pointer
-        %notNull = icmp ne %Exp (%Exp)* %fnPtr, null
-        assert(%notNull)
-
-        ; Must either have a non-negative argument count or -1 for "any"
-        %argCountOK = icmp sge %Word %argCount, -1
-        assert(%argCountOK)
-
-        ; Check to see that the string is at least one character long
-        ; (The empty string is *not* a valid primitive name!)
-        %len = call ccc %c_size_t @strlen(%c_char* %printForm)
-        %positive = icmp ugt %c_size_t %len, 0
-        assert(%positive)
-        #endif
-
-    ; Compute sizeof(nil_primitive)
-    ; FIXME: this shouldn't be done at run-time
-    %sizeAddr = getelementptr %nil_primitive* null, i64 1
-    %size = ptrtoint %nil_primitive* %sizeAddr to %c_size_t
-
-    %newMem = call NILCC i8* @NewMemory(%c_size_t %size)
-    %newPrim = bitcast i8* %newMem to %nil_primitive*
-
-    ; Set function pointer
-    %fnFieldPtr = getelementptr %nil_primitive* %newPrim, i64 0, i32 0
-    store %Exp (%Exp)* %fnPtr, %Exp (%Exp)** %fnFieldPtr
-
-    ; Set the argument count
-    %argCountField = getelementptr %nil_primitive* %newPrim, i64 0, i32 1
-    store %Word %argCount, %Word* %argCountField
-
-    ; Set the print form
-    ; Note that we don't uniqueify the print form--it's not accessible
-    ; from the language (though it could be), and could be a string
-    ; constant.
-    %printFormField = getelementptr %nil_primitive* %newPrim, i64 0, i32 2
-    store %c_char* %printForm, %c_char** %printFormField
-
-    %exp = call NILCC %Exp @nil_primitive2Exp(%nil_primitive* %newPrim)
-
-    ret %Exp %exp
 }
 
 ;**********************************************************************
