@@ -69,6 +69,52 @@ define NILCC %Tag
 }
 
 ;**********************************************************************
+; TagIs
+;
+; Returns true if the expression has the given tag.
+;
+;**********************************************************************
+
+define NILCC i1
+@TagIs(%Exp %exp, %Tag %tag)
+{
+    %expTag = call NILCC %Tag @GetTag(%Exp %exp)
+    %sameTag = icmp eq %Tag %expTag, %tag
+    ret i1 %sameTag
+}
+
+;**********************************************************************
+; TagIsNot
+;
+; Returns true if the expression has the given tag.
+;
+;**********************************************************************
+
+define NILCC i1
+@TagIsNot(%Exp %exp, %Tag %tag)
+{
+    %expTag = call NILCC %Tag @GetTag(%Exp %exp)
+    %differentTag = icmp ne %Tag %expTag, %tag
+    ret i1 %differentTag
+}
+
+;**********************************************************************
+; SameTag
+;
+; Returns true if the expressions have the same tag
+;
+;**********************************************************************
+
+define NILCC i1
+@SameTag(%Exp %lhs, %Exp %rhs)
+{
+    %lhsTag = call NILCC %Tag @GetTag(%Exp %lhs)
+    %rhsTag = call NILCC %Tag @GetTag(%Exp %rhs)
+    %sameTag = icmp eq %Tag %lhsTag, %rhsTag
+    ret i1 %sameTag
+}
+
+;**********************************************************************
 ; ClearTag
 ;
 ; Returns an expression with the same value as %exp (points to the same
@@ -214,8 +260,7 @@ define NILCC %c_char*
 @Exp2str(%Exp %exp)
 {
         #ifndef NDEBUG
-        %tag = call NILCC %Tag @GetTag(%Exp %exp)
-        %isSymbol = icmp eq %Tag %tag, SYMBOL_TAG
+        %isSymbol = call NILCC i1 @IsSymbol(%Exp %exp)
         assert(%isSymbol)
         #endif
 
@@ -273,8 +318,7 @@ define NILCC %nil_cell*
 @Exp2nil_cell(%Exp %exp)
 {
         #ifndef NDEBUG
-        %tag = call NILCC %Tag @GetTag(%Exp %exp)
-        %isCell = icmp eq %Tag %tag, CELL_TAG
+        %isCell = call NILCC i1 @IsCell(%Exp %exp)
         assert(%isCell)
         #endif
 
@@ -294,15 +338,41 @@ define NILCC %nil_cell*
 ;**********************************************************************
 
 ; #2 -- atom
+
+; Internal form
 define NILCC i1
-@Atom(%Exp %exp)
+@IsAtom(%Exp %exp)
 {
     ; Implemented in a way that allows expansion to other types of
     ; atoms besides symbols
-    %tag = call NILCC %Tag @GetTag(%Exp %exp)
-    %atomp = icmp ne %Tag %tag, CELL_TAG
+    %atomp = call NILCC i1 @TagIsNot(%Exp %exp, %Tag CELL_TAG)
 
     ret i1 %atomp
+}
+
+; #3 -- eq
+
+; Internal form
+define NILCC i1
+@Eq(%Exp %lhs, %Exp %rhs)
+{
+    ; Is this Graham's eq?  It will return t for lists that point to the
+    ; same cell, and that doesn't fit his description.  OTOH this is
+    ; extremely fast, which is one reason we wanted unique strings.  My
+    ; impression is that some of these properties actually were
+    ; implementation-driven, and this is the fastest implementation.  There
+    ; are also hints in "The Art of the Interpreter" that I'm right, and
+    ; in my Common Lisp book (where they call it EQL)
+    %areEq = icmp eq %Exp %lhs, %rhs
+
+    ret i1 %areEq
+}
+
+define NILCC i1
+@NotEq(%Exp %lhs, %Exp %rhs)
+{
+    %areEq = icmp ne %Exp %lhs, %rhs
+    ret i1 %areEq
 }
 
 ; #4 -- car
@@ -312,7 +382,7 @@ define NILCC %Exp
         ;FIXME: report errors instead of dying.  Not
         ; within #ifndef NDEBUG because until fixed
         ; this *will* happen and is not acceptable.
-        %cellp = call NILCC i1 @Cell(%Exp %exp)
+        %cellp = call NILCC i1 @IsCell(%Exp %exp)
         assert(%cellp)
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
@@ -327,7 +397,7 @@ define NILCC %Exp
 @nil_cdr(%Exp %exp)
 {
         ;FIXME: report errors instead of dying
-        %cellp = call NILCC i1 @Cell(%Exp %exp)
+        %cellp = call NILCC i1 @IsCell(%Exp %exp)
         assert(%cellp)
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
@@ -357,21 +427,78 @@ define NILCC %Exp
 }
 
 ;**********************************************************************
-; Cell
+; IsSymbol
+;
+; Returns true if the expression is a (possibly nil) symbol.
+;
+;**********************************************************************
+
+define NILCC i1
+@IsSymbol(%Exp %exp)
+{
+    %symbolp = call NILCC i1 @TagIs(%Exp %exp, %Tag SYMBOL_TAG)
+
+    ret i1 %symbolp
+}
+
+;**********************************************************************
+; IsCell
 ;
 ; Returns true if the expression is a (non-nil) cell.
 ;
 ;**********************************************************************
 
 define NILCC i1
-@Cell(%Exp %exp)
+@IsCell(%Exp %exp)
 {
-    ; Implemented in a way that allows expansion to other types of
-    ; atoms besides symbols
-    %tag = call NILCC %Tag @GetTag(%Exp %exp)
-    %cellp = icmp eq %Tag %tag, CELL_TAG
+    %cellp = call NILCC i1 @TagIs(%Exp %exp, %Tag CELL_TAG)
 
     ret i1 %cellp
+}
+
+;**********************************************************************
+; IsPrimitive
+;
+; Returns true if the expression is a primitive.
+;
+;**********************************************************************
+
+define NILCC i1
+@IsPrimitive(%Exp %exp)
+{
+    %primitivep = call NILCC i1 @TagIs(%Exp %exp, %Tag PRIMITIVE_TAG)
+
+    ret i1 %primitivep
+}
+
+;**********************************************************************
+; IsNil
+;
+; Returns true if the expression is nil.
+;
+;**********************************************************************
+
+define NILCC i1
+@IsNil(%Exp %exp)
+{
+    %isNull = call NILCC i1 @Eq(%Exp %exp, %Exp NIL_VALUE)
+
+    ret i1 %isNull
+}
+
+;**********************************************************************
+; NotNull
+;
+; Returns true if the expression is not nil.
+;
+;**********************************************************************
+
+define NILCC i1
+@NotNull(%Exp %exp)
+{
+    %notNull = call NILCC i1 @NotEq(%Exp %exp, %Exp NIL_VALUE)
+
+    ret i1 %notNull
 }
 
 ;**********************************************************************
@@ -402,6 +529,83 @@ define NILCC %Exp
 }
 
 ;**********************************************************************
+; NewCell
+;
+; Returns a newly allocated cell.  Its fields must be set before use.
+; This really isn't intended to be called directly--use nil_cons.
+;
+;**********************************************************************
+
+define NILCC %nil_cell*
+@NewCell()
+{
+    ; Compute sizeof(nil_cell)
+    ; FIXME: this shouldn't be done at run-time
+    %sizeAddr = getelementptr %nil_cell* null, i64 1
+    %size = ptrtoint %nil_cell* %sizeAddr to %c_size_t
+
+    ; Get a new cell
+    %newMem = call NILCC i8* @NewMemory(%c_size_t %size)
+    %newCell = bitcast i8* %newMem to %nil_cell*
+
+    ret %nil_cell* %newCell
+}
+
+;**********************************************************************
+; NewPrimitive
+;
+; Constructs a new primitive.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm)
+{
+        #ifndef NDEBUG
+        ; Better not be a null function pointer
+        %notNull = icmp ne %Exp (%Exp)* %fnPtr, null
+        assert(%notNull)
+
+        ; Must either have a non-negative argument count or -1 for "any"
+        %argCountOK = icmp sge %Word %argCount, -1
+        assert(%argCountOK)
+
+        ; Check to see that the string is at least one character long
+        ; (The empty string is *not* a valid primitive name!)
+        %len = call ccc %c_size_t @strlen(%c_char* %printForm)
+        %positive = icmp ugt %c_size_t %len, 0
+        assert(%positive)
+        #endif
+
+    ; Compute sizeof(nil_primitive)
+    ; FIXME: this shouldn't be done at run-time
+    %sizeAddr = getelementptr %nil_primitive* null, i64 1
+    %size = ptrtoint %nil_primitive* %sizeAddr to %c_size_t
+
+    %newMem = call NILCC i8* @NewMemory(%c_size_t %size)
+    %newPrim = bitcast i8* %newMem to %nil_primitive*
+
+    ; Set function pointer
+    %fnFieldPtr = getelementptr %nil_primitive* %newPrim, i64 0, i32 0
+    store %Exp (%Exp)* %fnPtr, %Exp (%Exp)** %fnFieldPtr
+
+    ; Set the argument count
+    %argCountField = getelementptr %nil_primitive* %newPrim, i64 0, i32 1
+    store %Word %argCount, %Word* %argCountField
+
+    ; Set the print form
+    ; Note that we don't uniqueify the print form--it's not accessible
+    ; from the language (though it could be), and could be a string
+    ; constant.
+    %printFormField = getelementptr %nil_primitive* %newPrim, i64 0, i32 2
+    store %c_char* %printForm, %c_char** %printFormField
+
+    %exp = call NILCC %Exp @nil_primitive2Exp(%nil_primitive* %newPrim)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
 ; PrintExp
 ;
 ; FIXME: should use the atom predicate and factor out a PrintAtom
@@ -412,7 +616,7 @@ define NILCC %Exp
 define NILCC void
 @PrintExp(%Exp %exp)
 {
-    %isAtom = call NILCC i1 @Atom(%Exp %exp)
+    %isAtom = call NILCC i1 @IsAtom(%Exp %exp)
     br i1 %isAtom, label %IsAtom, label %IsCell
 
 IsAtom:
@@ -452,7 +656,7 @@ CantHappen:
     br label %CantHappen
 
 SymbolTag:
-    %isNil = icmp eq %Exp %exp, NIL_VALUE
+    %isNil = call NILCC i1 @IsNil(%Exp %exp)
     br i1 %isNil, label %IsNil, label %IsSymbol
 
 IsSymbol:
@@ -476,7 +680,7 @@ IsNil:
 define NILCC void
 @PrintCDR(%Exp %exp)
 {
-    %notNil = icmp ne %Exp %exp, NIL_VALUE
+    %notNil = call NILCC i1 @NotNull(%Exp %exp)
     br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:
@@ -485,7 +689,7 @@ IsNil:
     ret void
 
 NotNil:
-    %isAtom = call NILCC i1 @Atom(%Exp %exp)
+    %isAtom = call NILCC i1 @IsAtom(%Exp %exp)
     br i1 %isAtom, label %IsAtom, label %IsCell
 
 IsAtom:

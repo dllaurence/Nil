@@ -31,6 +31,10 @@
 
     %Exp = type %Word
 
+    ; This is our representation, though we don't actually need it explicit
+    ; It would have been better to use this anyway, but I did not.
+    ;%nil_symbol = type %c_char
+
     %nil_cell = type {%Exp, %Exp}
 
 ; Tag field type values.
@@ -38,25 +42,30 @@
     ; This and the *_TAG constants are the only places where the code
     ; assumes the size of the tag field, so it can be extended as needed
     ; simply by changing the type here.
-    %Tag = type i3
-    #define MAX_TAG 7
+    %Tag = type i2
+    #define MAX_TAG 3
 
     ; For now, these values are randomly chosen to ensure the code
     ; is clean and not depending on particular bit patterns.  They should
     ; fit insize a %Tag type (or they'll be silently wrapped), but otherwise
     ; are arbitrary.
-    #define SYMBOL_TAG  3
-    #define   CELL_TAG  7
+    #define    SYMBOL_TAG  0
+    #define      CELL_TAG  1
+    #define PRIMITIVE_TAG  2
 
-    ; We define Nil as the null symbol instead of the null cell because
-    ; it makes testing for a non-null cell a single comparison.  The
-    ; code *does* assume this (most especially it assumes NIL does not
-    ; have CELL_TAG.
+    ; We define Nil as the null symbol (or at least not as the null CELL,
+    ; which is an obvious choice as nil is the empty list) instead of the
+    ; null cell because it makes testing for a non-null cell a single
+    ; comparison.  The code *does* assume this (most especially it assumes
+    ; NIL does not have CELL_TAG).
     #define   NIL_VALUE SYMBOL_TAG
 
 ; Low-level manipulation of the tags embedded in the low-order bits.
     ; FIXME: these trivial functions should *always* be inlined
     declare NILCC %Tag @GetTag(%Exp %exp)
+    declare NILCC i1   @TagIs(%Exp %exp, %Tag %tag)
+    declare NILCC i1   @TagIsNot(%Exp %exp, %Tag %tag)
+    declare NILCC i1   @SameTag(%Exp %lhs, %Exp %rhs)
     declare NILCC %Exp @ClearTag(%Exp %exp)
     declare NILCC %Exp @AddTag(%Exp %exp, %Tag %tag)
     declare NILCC %Exp @SetTag(%Exp %exp, %Tag %tag)
@@ -76,7 +85,12 @@
 ; internal forms
 
     ; #2 -- atom
-    declare NILCC i1 @Atom(%Exp %exp)
+    declare NILCC i1 @IsAtom(%Exp %exp) ; Internal form
+
+    ; #3 -- eq (see notes on whether this is precisely Graham's eq
+    ; Internal form
+    declare NILCC i1 @Eq(%Exp %lhs, %Exp %rhs)
+    declare NILCC i1 @NotEq(%Exp %lhs, %Exp %rhs)
 
     ; #4 -- car
     declare NILCC %Exp @nil_car(%Exp %exp)
@@ -89,11 +103,19 @@
 
 ; Other tests
 
-    declare NILCC i1 @Cell(%Exp %exp)
+    declare NILCC i1 @IsSymbol(%Exp %exp)
+    declare NILCC i1 @IsCell(%Exp %exp)
+    declare NILCC i1 @IsPrimitive(%Exp %exp)
+    declare NILCC i1 @IsNil(%Exp %exp)
+    declare NILCC i1 @NotNull(%Exp %exp)
 
 ; Other symbol manipulations
 
-    declare NILCC %Exp @NewSymbol(%c_char* %name)
+    ; The interfaces are somewhat inconsistent, but convenient
+    declare NILCC %Exp       @NewSymbol(%c_char* %name)
+    declare NILCC %nil_cell* @NewCell()
+    declare NILCC %Exp       @NewPrimitive(%Exp (%Exp)*, %Word %argCount,
+                                           %c_char* %printForm)
 
 ; Expression I/O
     declare NILCC void @PrintExp(%Exp %exp)
