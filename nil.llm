@@ -54,6 +54,68 @@
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
 
+#if 0
+;**********************************************************************
+; nil_assoc
+;
+; Takes a list of associations, where each association is a list with
+; the key in the first position.  This is probably the same as assoc
+; in standard lisp.
+;
+; We'll only use two-element associations, but the code is general for
+; re-use in-language.  For that reason, this should perhaps move to
+; the exp module, or a separate library of primitives.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@nil_assoc(%Exp %key, %Exp %assocList)
+{
+    %haveAssocList = call NILCC i1 @Eq(%Exp %assocList, %Exp NIL_VALUE)
+    br i1 %haveAssocList, label %HaveList, label %NoList
+
+NoList:
+    ; This is our "not found" return value
+    ret %Exp NIL_VALUE
+
+HaveList:
+    #ifndef NDEBUG
+    ; FIXME: this has to report an error, not explode in the user's
+    ; face.  However, since the interpreter controls the environment
+    ; (for now), it should never be called with anything but a list
+    ; of associations.
+    %isAssocList = call NILCC i1 @IsCell(%Exp %assocList)
+    assert(%isAssocList)
+    #endif
+
+    ; Does the first entry have the key?
+    %firstAssoc = call NILCC %Exp @nil_car(%Exp %assocList)
+
+    ; Our associations are lists.
+    #ifndef NDEBUG
+    %isAssoc = call NILCC i1 @IsCell(%Exp %firstAssoc)
+    assert(%isAssoc)
+    #endif
+
+    %thisKey = call NILCC %Exp @nil_car(%Exp %firstAssoc)
+    %found = call NILCC i1 @Eq(%Exp %key, %Exp %thisKey)
+
+    br i1 %found %Found, %NotFound
+
+Found:
+    ; Note that we return the entire association--this allows,
+    ; among other things, distinguishing between finding a nil
+    ; value and finding no value
+    ret %Exp %firstAssoc
+
+NotFound:
+    %restAssoc = call NILCC %Exp @nil_cdr(%Exp %assocList)
+    ; Trivial tail call
+    %value = call NILCC %Exp @nil_assoc(%Exp %key, %Exp %restAssoc)
+
+    ret %Exp %value
+}
+
 ;**********************************************************************
 ; EnvLookup
 ;
@@ -62,8 +124,46 @@
 define NILCC %Exp
 @EnvLookup(%Exp %exp, %Exp %env)
 {
-    ; All symbols are self-evaluating for now
-    ret %Exp %exp
+;call %c_int @putchar(%c_int ASCII_S)
+    %haveEnv = call NILCC i1 @NotNull(%Exp %env)
+    br i1 %haveEnv, label %HaveEnv, label %IsNilEnv
+
+IsNilEnv:
+    ret %Exp NIL_VALUE
+
+HaveEnv:
+    #ifndef NDEBUG
+    ; Since the interpreter controls the environment (for now), it
+    ; should never be called with anything but a list of association
+    ; lists.
+    %isEnvCell = call NILCC i1 @IsCell(%Exp %exp)
+    assert(%isEnvCell)
+    #endif
+
+    ; Our environments are lists of lists.  Try to find the symbol
+    ; in the first one
+    %assocList = call NILCC %Exp @nil_car(%Exp %exp)
+
+    #ifndef NDEBUG
+    %isAssocCell = call NILCC i1 @IsCell(%Exp %assocList)
+    assert(%isAssocCell)
+    #endif
+
+    %firstValue = call NILCC %Exp @nil_mapfind(%Exp %assocList)
+
+    %found = CALCC i1 @NotNull(%Exp %firstValue)
+
+    br i1 %found, label %Found, label NotFound
+
+Found:
+    ret %Exp %firstValue
+
+NotFound:
+
+    %nextEnv = call NILCC %Exp @nil_cdr(%Exp %env)
+    ; trivial tail-call
+    %nextValue = call NILCC %Exp @EnvLookup(%nextEnv)
+    ret %Exp %nextValue
 }
 
 ;**********************************************************************
@@ -74,6 +174,7 @@ define NILCC %Exp
 define NILCC %Exp
 @Eval(%Exp %exp, %Exp %env)
 {
+;call %c_int @putchar(%c_int ASCII_E)
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
 
     switch %Tag %tag, label %CantHappen [
@@ -113,6 +214,7 @@ SymbolTag:
 define NILCC %Exp
 @Apply(%Exp %fnExp, %Exp %args, %Exp %env)
 {
+;call %c_int @putchar(%c_int ASCII_A)
     ; For now, just say what we'd do
     %applyPtr = getelementptr [APPLYARRAY_LEN x %c_char]* @applyArray,
                                       i64 0, i64 0
@@ -136,11 +238,12 @@ define NILCC %Exp
 define NILCC %Exp
 @EvalList(%Exp %exp, %Exp %env)
 {
-    %isAtom = call NILCC i1 @Atom(%Exp %exp)
+;call %c_int @putchar(%c_int ASCII_L)
+    %isAtom = call NILCC i1 @IsAtom(%Exp %exp)
     br i1 %isAtom, label %Atom, label %Cell
 
 Atom:
-    %isNil = icmp eq %Exp %exp, NIL_VALUE
+    %isNil = call NILCC i1 @IsNil(%Exp %exp)
 
     ; Non-nil would be weird--evaluating a dotted pair, basically
     ; FIXME: obviously this has to report an error, not explode all
@@ -160,6 +263,7 @@ Cell:
 
     ret %Exp %cons
 }
+#endif
 
 ;**********************************************************************
 ; DiscardLine
@@ -307,8 +411,12 @@ PrintChar:
     br label %ReadExp
 
 EvalExp:
+#if 0
     %unevalExp = extractvalue %ParseExp %parseExp, 1
     %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp NIL_VALUE)
+#else
+    %exp = extractvalue %ParseExp %parseExp, 1
+#endif
     call NILCC void @PrintExp(%Exp %exp)
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     store i1 1, i1* %hadInputPtr

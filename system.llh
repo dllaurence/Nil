@@ -45,12 +45,16 @@
     #define ASCII_B         66
     #define ASCII_C         67
     #define ASCII_D         68
+    #define ASCII_E         69
 
+    #define ASCII_L         76
+    #define ASCII_M         77
     #define ASCII_N         78
     #define ASCII_O         79
     #define ASCII_P         80
     #define ASCII_Q         81
     #define ASCII_R         82
+    #define ASCII_S         83
 
     ; Miniscules
     #define ASCII_a         97
