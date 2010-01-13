@@ -56,6 +56,51 @@
 
 #if 0
 ;**********************************************************************
+; nil_quit
+;
+;**********************************************************************
+
+#define QUITARRAY_LEN 5
+@quitArray = internal constant [QUITARRAY_LEN x %c_char]
+    c"quit\00"
+
+define NILCC %Exp
+@nil_quit(%Exp %exp)
+{
+    call ccc void @exit(%c_int 0)
+
+    ret %Exp NIL_VALUE
+}
+#endif
+
+;**********************************************************************
+; GetEnv
+;
+; Constructs the top-level environment
+;
+;**********************************************************************
+
+define NILCC %Exp
+@GetEnv()
+{
+#if 0
+    %quitStr = getelementptr [QUITARRAY_LEN x %c_char]* @quitArray,
+                                                i64 0, i64 0
+    %quitPrim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* @nil_quit,
+                                          %Word -1, %c_char* %quitStr)
+    %quitSym = call NILCC %Exp @NewSymbol(%c_char* %quitStr)
+    %quitAssoc = call NILCC %Exp @nil_cons(%Exp %quitSym,
+                                           %Exp %quitPrim)
+    %assocList1 = call NILCC %Exp @nil_cons(%Exp %quitAssoc,
+                                            %Exp NIL_VALUE)
+
+    ret %Exp %assocList1
+#endif
+    ret %Exp NIL_VALUE
+}
+
+#if 0
+;**********************************************************************
 ; nil_assoc
 ;
 ; Takes a list of associations, where each association is a list with
@@ -71,7 +116,7 @@
 define NILCC %Exp
 @nil_assoc(%Exp %key, %Exp %assocList)
 {
-    %haveAssocList = call NILCC i1 @Eq(%Exp %assocList, %Exp NIL_VALUE)
+    %haveAssocList = call NILCC i1 @NotNil(%Exp %assocList)
     br i1 %haveAssocList, label %HaveList, label %NoList
 
 NoList:
@@ -100,7 +145,7 @@ HaveList:
     %thisKey = call NILCC %Exp @nil_car(%Exp %firstAssoc)
     %found = call NILCC i1 @Eq(%Exp %key, %Exp %thisKey)
 
-    br i1 %found %Found, %NotFound
+    br i1 %found, label %Found, label %NotFound
 
 Found:
     ; Note that we return the entire association--this allows,
@@ -125,7 +170,7 @@ define NILCC %Exp
 @EnvLookup(%Exp %exp, %Exp %env)
 {
 ;call %c_int @putchar(%c_int ASCII_S)
-    %haveEnv = call NILCC i1 @NotNull(%Exp %env)
+    %haveEnv = call NILCC i1 @NotNil(%Exp %env)
     br i1 %haveEnv, label %HaveEnv, label %IsNilEnv
 
 IsNilEnv:
@@ -151,9 +196,9 @@ HaveEnv:
 
     %firstValue = call NILCC %Exp @nil_mapfind(%Exp %assocList)
 
-    %found = CALCC i1 @NotNull(%Exp %firstValue)
+    %found = CALCC i1 @NotNil(%Exp %firstValue)
 
-    br i1 %found, label %Found, label NotFound
+    br i1 %found, label %Found, label %NotFound
 
 Found:
     ret %Exp %firstValue
@@ -164,6 +209,13 @@ NotFound:
     ; trivial tail-call
     %nextValue = call NILCC %Exp @EnvLookup(%nextEnv)
     ret %Exp %nextValue
+}
+#endif
+
+define NILCC %Exp
+@EnvLookup(%Exp %exp, %Exp %env)
+{
+    ret %Exp %exp
 }
 
 ;**********************************************************************
@@ -198,8 +250,33 @@ Cell:
     ret %Exp %result
 
 SymbolTag:
-    %evalExp = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %env)
-    ret %Exp %evalExp
+    ;%evalExp = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %env)
+    ;ret %Exp %evalExp
+
+    %notNil = call NILCC i1 @NotNil(%Exp %exp)
+    ;br i1 %notNil, label %NotNil, label %IsNil
+    ; for now
+    br label %IsNil
+
+IsNil:
+    ; nil is self-evaluating
+    ret %Exp %exp
+
+#if 0
+NotNil:
+    %assoc = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %env)
+    %found = call NILCC i1 @NotNil(%Exp %assoc)
+    br i1 %found, label %Found, label %NotFound
+
+NotFound:
+    ; What to do until we get error reporting in?  Self evaluate, I guess.
+    ret %Exp %exp
+
+Found:
+    %valueList = call NILCC %Exp @nil_cdr(%Exp %assoc)
+    %value = call NILCC %Exp @nil_car(%Exp %valueList)
+    ret %Exp %value
+#endif
 }
 
 ;**********************************************************************
@@ -263,7 +340,6 @@ Cell:
 
     ret %Exp %cons
 }
-#endif
 
 ;**********************************************************************
 ; DiscardLine
@@ -411,9 +487,10 @@ PrintChar:
     br label %ReadExp
 
 EvalExp:
-#if 0
+#if 1
     %unevalExp = extractvalue %ParseExp %parseExp, 1
-    %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp NIL_VALUE)
+    %env = call NILCC %Exp @GetEnv()
+    %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp %env)
 #else
     %exp = extractvalue %ParseExp %parseExp, 1
 #endif

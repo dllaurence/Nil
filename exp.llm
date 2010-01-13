@@ -546,14 +546,14 @@ define NILCC i1
 }
 
 ;**********************************************************************
-; NotNull
+; NotNil
 ;
 ; Returns true if the expression is not nil.
 ;
 ;**********************************************************************
 
 define NILCC i1
-@NotNull(%Exp %exp)
+@NotNil(%Exp %exp)
 {
     %notNull = call NILCC i1 @NotEq(%Exp %exp, %Exp NIL_VALUE)
 
@@ -733,7 +733,9 @@ IsPrimitive:
     %prim = call NILCC %nil_primitive* @Exp2nil_primitive(%Exp %exp)
     %printFormField = getelementptr %nil_primitive* %prim, i64 0, i32 2
     %printForm = load %c_char** %printFormField
+    call ccc %c_int @putchar(%c_int ASCII_HASH)
     call ccc %c_int @putstring(%c_char* %printForm)
+    call ccc %c_int @putchar(%c_int ASCII_HASH)
     ret void
 }
 
@@ -747,7 +749,7 @@ IsPrimitive:
 define NILCC void
 @PrintCDR(%Exp %exp)
 {
-    %notNil = call NILCC i1 @NotNull(%Exp %exp)
+    %notNil = call NILCC i1 @NotNil(%Exp %exp)
     br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:

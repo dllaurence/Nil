@@ -117,7 +117,7 @@
     declare NILCC i1 @IsCell(%Exp %exp)
     declare NILCC i1 @IsPrimitive(%Exp %exp)
     declare NILCC i1 @IsNil(%Exp %exp)
-    declare NILCC i1 @NotNull(%Exp %exp)
+    declare NILCC i1 @NotNil(%Exp %exp)
 
 ; Other symbol manipulations
 

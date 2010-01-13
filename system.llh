@@ -141,8 +141,10 @@
 
     declare ccc %c_size_t @strlen(%c_char* %string)
 
-; Useful Macros
+; Other libc
 
-    #define DECLARE_STRING(name, len)
+    declare ccc void @exit(%c_int %status)
+
+; Useful Macros
 
 #endif
