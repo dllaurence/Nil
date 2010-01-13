@@ -227,7 +227,7 @@ Done:
 
 #define WELCOMEARRAY_LEN 62
 @welcomeArray = internal constant [WELCOMEARRAY_LEN x %c_char]
-    c"Welcome to nil v0.0.5.  Press <ctrl>-D at the prompt to exit.\00"
+    c"Welcome to nil v0.0.6.  Press <ctrl>-D at the prompt to exit.\00"
 
 #define PROMPTARRAY_LEN 6
 @promptArray = internal constant [PROMPTARRAY_LEN x %c_char]
