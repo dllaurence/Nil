@@ -37,19 +37,30 @@
     ; return--this is tedious but safer because it decouples the code.
 
     ; I/O Exceptions
-    #define NIL_EOF            -1
-    #define NIL_IOERROR        -2
+    #define NIL_EOF              -1
+    #define NIL_IOERROR          -2
 
     ; Lexer Exceptions
-    #define NIL_EXCEPTION     -11
-    #define NIL_BADCHAR       -12
+    ; NIL_EXCEPTION should go away once the parser uses the separate
+    ; exception type
+    #define NIL_EXCEPTION       -11
+    #define NIL_BADCHAR         -12
 
     ; Parser Exceptions
-    #define NIL_EXTRA_RPAREN  -21
+    #define NIL_EXTRA_RPAREN    -21
 
     ; Normal Parsed Expressions
-    #define NIL_SYMBOL        -31
-    #define NIL_CELL          -32
+    ; These will go away when the parser uses the exception type
+    #define NIL_SYMBOL          -31
+    #define NIL_CELL            -32
+
+    ; Evaluator Exceptions
+    #define NIL_UNKNOWN_SYMBOL    0
+    #define NIL_EVAL_DOTPAIR      1
+    #define NIL_CANNOT_APPLY      2
+    #define NIL_EXPECTED_LIST     3
+
+    ; Evaluator Types
 
 #endif
 

@@ -4,6 +4,8 @@ README
 
 ChangeLog:
 
+    v0.0.7    * Primitive functions, evaluation
+
     v0.0.6    * Evaluator skeleton.
 
     v0.0.5    * Parses the input correctly.
@@ -54,20 +56,18 @@ Running:
 
 Type "./nil" in the build directory and behold the glory.
 
-In Nil 0.0.6 a skeleton evaluator recurses over the parsed expressions and
-inserts 'apply' into every combination where apply would act.  The list of
-known strings is printed before each prompt (this is mostly for debugging, but
-also shows that it is doing something besides printing what you typed).
+In Nil 0.0.7 we have the beginning of actual evaluation.  The evaluator knows
+how to evaluate () to itself (it doesn't yet know that it is also named nil,
+however) and 'quit' to a primitive function object.  It also knows how to
+evaluate primitives, which means (quit) quits the program.  It reports errors
+on symbols it can't evaluate, and also knows that () can't be applied to
+anything even though it can evaluate it.
 
-The interaction loop quits when EOF or an I/O error is encountered, and warns
-about bad characters on the input.  It isn't perfect, but it is tolerable for
-the moment and even allows you to continue with a special continuation prompt
-if you hit return without closing all your parens.  The major input bug is that
-it doesn't know about escape sequences, so trying to do cursor movement at the
-command line will enter some strange strings into the known strings table.
-
-At this point the lexer accepts more characters as symbol characters than even
-lisp should, but that's not worth fixing right now.
+This simple functionality hides a great deal of internal work, of course.  The
+big additions are an exception type that allows reporting of and recovery from
+errors, and of course the primitive function type necessary to implement
+(quit).  They are implemented as full types rather than as hard-coded hacks
+in the evaluator so that they are first-class objects from the beginning.
 
 HACKING
 
@@ -97,7 +97,7 @@ Main Nil implementation files:
 nil.llh       Global declarations (types, #defines) for all source files.
 
 nil.llm       has main(), and documentation you will want to read.  Also
-              the skeleton evaluator being developed.
+              the evaluator being developed.
 
 System support files:
 

@@ -90,7 +90,29 @@ define ccc void
 {
     %formatString = getelementptr %intFormatType* @intFormat, i64 0, i64 0
 
-    call ccc %c_int (%c_char*, ...)* @printf(%c_char* %formatString, %c_int %integer)
+    call ccc %c_int (%c_char*, ...)*
+                       @printf(%c_char* %formatString, %c_int %integer)
+
+    ret void
+}
+
+;**********************************************************************
+; putl
+;
+;**********************************************************************
+
+#define LONGFORMAT_LEN 4
+@longFormat = internal constant [LONGFORMAT_LEN x %c_char] c"%ld\00"
+%longFormatType = type [LONGFORMAT_LEN x %c_char]
+
+define ccc void
+@putl(%c_long %long)
+{
+    %formatString = getelementptr %longFormatType* @longFormat,
+                                                       i64 0, i64 0
+
+    call ccc %c_int (%c_char*, ...)*
+                      @printf(%c_char* %formatString, %c_long %long)
 
     ret void
 }

@@ -39,6 +39,8 @@
 
     declare NILCC void @PrintAtom(%Exp %exp)
     declare NILCC void @PrintCDR(%Exp %exp)
+    declare NILCC void @PrintPrimitive(%Exp %exp)
+    declare NILCC void @PrintException(%Exp %exp)
 
 ;**********************************************************************
 ; Tag manipulation functions
@@ -207,6 +209,39 @@ define NILCC i1
 }
 
 ;**********************************************************************
+; ShiftOutTag
+;
+; This and its opposite are one-instruction functions, but still useful
+; for abstraction and documentation.  Inlining would be the right way
+; to optimize.
+;
+;**********************************************************************
+
+define NILCC %Word
+@ShiftOutTag(%Exp %exp)
+{
+    %value = lshr %Exp %exp, TAG_BITS
+
+    ret %Word %value
+}
+
+;**********************************************************************
+; ShiftInTag
+;
+; Warning: this low-level function leaves a blank tag field to be
+; filled in.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@ShiftInTag(%Word %word)
+{
+    %exp = shl %Word %word, TAG_BITS
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
 ; Conversions
 ;
 ;**********************************************************************
@@ -326,6 +361,134 @@ define NILCC %nil_cell*
     %cell = inttoptr %Exp %untaggedExp to %nil_cell*
 
     ret %nil_cell* %cell
+}
+
+;**********************************************************************
+; nil_primitive2Exp
+;
+; Converts the nil_primitive* pointer to an Expression with the correct
+; tag.  THIS IS ONLY A CONVERSION FUNCTION and has no idea if the
+; pointer actually points to anything sane.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@nil_primitive2Exp(%nil_primitive* %prim)
+{
+        ; FIXME: what if %prim is null?  This is almost certainly the wrong
+        ; behavior but what is the correct lisp semantics?
+        ; need to be careful about the precise meaning of nil in lisp.
+        ; For now, assert that it isn't so it can't silently do The Wrong
+        ; Thing
+        %notNull = icmp ne %nil_primitive* %prim, null
+        assert(%notNull)
+
+        #ifndef NDEBUG
+        ; Also it obviously must be aligned
+        %voidPtr = bitcast %nil_primitive* %prim to i8*
+        %aligned = call NILCC i1 @Aligned(i8* %voidPtr)
+        assert(%aligned)
+        #endif
+
+    %untaggedExp = ptrtoint %nil_primitive* %prim to %Exp
+    %exp = call NILCC %Exp @AddTag(%Exp %untaggedExp, %Tag PRIMITIVE_TAG)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; Exp2nil_primitive
+;
+; Converts an Expression to a cell pointer.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %nil_primitive*
+@Exp2nil_primitive(%Exp %exp)
+{
+        #ifndef NDEBUG
+        %isPrimitive = call NILCC i1 @IsPrimitive(%Exp %exp)
+        assert(%isPrimitive)
+        #endif
+
+    %untaggedExp = call NILCC %Exp @ClearTag(%Exp %exp)
+    %prim = inttoptr %Exp %untaggedExp to %nil_primitive*
+
+    ret %nil_primitive* %prim
+}
+
+;**********************************************************************
+; Exception2Exp
+;
+; Converts an exception code to an Expression with the correct tag.
+;
+;**********************************************************************
+
+#ifndef NDEBUG
+@except_guard = private global i1 1
+#endif
+
+define NILCC %Exp
+@Exception2Exp(%Word %code)
+{
+        #ifndef NDEBUG
+        ; Detect overflow
+        %maxCode = call NILCC %Word @ShiftOutTag(%Exp -1)
+        %inBounds = icmp ule %Word %code, %maxCode
+        assert(%inBounds)
+        #endif
+
+    %untaggedExp = call NILCC %Exp @ShiftInTag(%Word %code)
+    %exp = call NILCC %Exp @AddTag(%Exp %untaggedExp, %Tag EXCEPTION_TAG)
+
+        #ifndef NDEBUG
+        %checkConversion = load i1* @except_guard
+        br i1 %checkConversion, label %Check, label %NoCheck
+        Check:
+        store i1 0, i1* @except_guard
+        %newCode = call NILCC %Word @Exp2Exception(%Exp %exp)
+        store i1 1, i1* @except_guard
+        %equal = icmp eq %Word %code, %newCode
+        assert(%equal)
+        br label %NoCheck
+        NoCheck:
+        #endif
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; Exp2Exception
+;
+; Extracts an exception code from an exception expression.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %Word
+@Exp2Exception(%Exp %exp)
+{
+    %result = call NILCC %Word @ShiftOutTag(%Exp %exp)
+
+        #ifndef NDEBUG
+        %checkConversion = load i1* @except_guard
+        br i1 %checkConversion, label %Check, label %NoCheck
+        Check:
+        store i1 0, i1* @except_guard
+        %newExp = call NILCC %Word @Exception2Exp(%Word %result)
+        store i1 1, i1* @except_guard
+        %equal = icmp eq %Exp %exp, %newExp
+        assert(%equal)
+        br label %NoCheck
+        NoCheck:
+        #endif
+
+    ret %Word %result
 }
 
 ;**********************************************************************
@@ -457,6 +620,51 @@ define NILCC i1
 }
 
 ;**********************************************************************
+; IsPrimitive
+;
+; Returns true if the expression is a primitive.
+;
+;**********************************************************************
+
+define NILCC i1
+@IsPrimitive(%Exp %exp)
+{
+    %primitivep = call NILCC i1 @TagIs(%Exp %exp, %Tag PRIMITIVE_TAG)
+
+    ret i1 %primitivep
+}
+
+;**********************************************************************
+; IsException
+;
+; Returns true if the expression is an exception.
+;
+;**********************************************************************
+
+define NILCC i1
+@IsException(%Exp %exp)
+{
+    %exceptionp = call NILCC i1 @TagIs(%Exp %exp, %Tag EXCEPTION_TAG)
+
+    ret i1 %exceptionp
+}
+
+;**********************************************************************
+; NotException
+;
+; Returns false if the expression is an exception.
+;
+;**********************************************************************
+
+define NILCC i1
+@NotException(%Exp %exp)
+{
+    %exceptionp = call NILCC i1 @TagIsNot(%Exp %exp, %Tag EXCEPTION_TAG)
+
+    ret i1 %exceptionp
+}
+
+;**********************************************************************
 ; IsNil
 ;
 ; Returns true if the expression is nil.
@@ -472,14 +680,14 @@ define NILCC i1
 }
 
 ;**********************************************************************
-; NotNull
+; NotNil
 ;
 ; Returns true if the expression is not nil.
 ;
 ;**********************************************************************
 
 define NILCC i1
-@NotNull(%Exp %exp)
+@NotNil(%Exp %exp)
 {
     %notNull = call NILCC i1 @NotEq(%Exp %exp, %Exp NIL_VALUE)
 
@@ -537,6 +745,60 @@ define NILCC %nil_cell*
 }
 
 ;**********************************************************************
+; NewPrimitive
+;
+; Constructs a new primitive.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm)
+{
+        #ifndef NDEBUG
+        ; Better not be a null function pointer
+        %notNull = icmp ne %Exp (%Exp)* %fnPtr, null
+        assert(%notNull)
+
+        ; Must either have a non-negative argument count or -1 for "any"
+        %argCountOK = icmp sge %Word %argCount, -1
+        assert(%argCountOK)
+
+        ; Check to see that the string is at least one character long
+        ; (The empty string is *not* a valid primitive name!)
+        %len = call ccc %c_size_t @strlen(%c_char* %printForm)
+        %positive = icmp ugt %c_size_t %len, 0
+        assert(%positive)
+        #endif
+
+    ; Compute sizeof(nil_primitive)
+    ; FIXME: this shouldn't be done at run-time
+    %sizeAddr = getelementptr %nil_primitive* null, i64 1
+    %size = ptrtoint %nil_primitive* %sizeAddr to %c_size_t
+
+    %newMem = call NILCC i8* @NewMemory(%c_size_t %size)
+    %newPrim = bitcast i8* %newMem to %nil_primitive*
+
+    ; Set function pointer
+    %fnFieldPtr = getelementptr %nil_primitive* %newPrim, i64 0, i32 0
+    store %Exp (%Exp)* %fnPtr, %Exp (%Exp)** %fnFieldPtr
+
+    ; Set the argument count
+    %argCountField = getelementptr %nil_primitive* %newPrim, i64 0, i32 1
+    store %Word %argCount, %Word* %argCountField
+
+    ; Set the print form
+    ; Note that we don't uniqueify the print form--it's not accessible
+    ; from the language (though it could be), and could be a string
+    ; constant.
+    %printFormField = getelementptr %nil_primitive* %newPrim, i64 0, i32 2
+    store %c_char* %printForm, %c_char** %printFormField
+
+    %exp = call NILCC %Exp @nil_primitive2Exp(%nil_primitive* %newPrim)
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
 ; PrintExp
 ;
 ; FIXME: should use the atom predicate and factor out a PrintAtom
@@ -571,6 +833,16 @@ IsCell:
 ;
 ;**********************************************************************
 
+#define PRIMITIVEFORMAT_LEN 16
+@primitiveFormat = internal constant [PRIMITIVEFORMAT_LEN x %c_char]
+        c"#primitive: %s#\00"
+%primitiveFormatType = type [PRIMITIVEFORMAT_LEN x %c_char]
+
+#define EXCEPTIONFORMAT_LEN 16
+@exceptionFormat = internal constant [EXCEPTIONFORMAT_LEN x %c_char]
+        c"#exception:%ld#\00"
+%exceptionFormatType = type [EXCEPTIONFORMAT_LEN x %c_char]
+
 define NILCC void
 @PrintAtom(%Exp %exp)
 {
@@ -578,8 +850,10 @@ define NILCC void
 
     switch %Tag %tag, label %CantHappen [
 
-        %Tag SYMBOL_TAG, label %SymbolTag
-        %Tag   CELL_TAG, label %CantHappen
+        %Tag SYMBOL_TAG,    label %SymbolTag
+        %Tag   CELL_TAG,    label %CantHappen
+        %Tag PRIMITIVE_TAG, label %IsPrimitive
+        %Tag EXCEPTION_TAG, label %IsException
     ]
 
 CantHappen:
@@ -599,6 +873,28 @@ IsNil:
     call ccc %c_int @putchar(%c_int ASCII_LPAREN)
     call ccc %c_int @putchar(%c_int ASCII_RPAREN)
     ret void
+
+IsPrimitive:
+    %prim = call NILCC %nil_primitive* @Exp2nil_primitive(%Exp %exp)
+    %printFormField = getelementptr %nil_primitive* %prim, i64 0, i32 2
+    %printForm = load %c_char** %printFormField
+
+    %primitiveString = getelementptr %primitiveFormatType*
+                                 @primitiveFormat, i64 0, i64 0
+    call ccc %c_int (%c_char*, ...)*
+                     @printf(%c_char* %primitiveString,
+                             %c_char* %printForm)
+    ret void
+
+IsException:
+    %code = call NILCC %Word @Exp2Exception(%Exp %exp)
+
+    %exceptionString = getelementptr %exceptionFormatType*
+                                 @exceptionFormat, i64 0, i64 0
+    call ccc %c_int (%c_char*, ...)*
+                     @printf(%c_char* %exceptionString,
+                             %Word %code)
+    ret void
 }
 
 ;**********************************************************************
@@ -611,12 +907,12 @@ IsNil:
 define NILCC void
 @PrintCDR(%Exp %exp)
 {
-    %notNil = call NILCC i1 @NotNull(%Exp %exp)
+    %notNil = call NILCC i1 @NotNil(%Exp %exp)
     br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:
     ; End of list, nothing to do (which is why we handle this case
-    ; specially instead of passing it along to PrintAtom
+    ; specially instead of passing it along to PrintAtom)
     ret void
 
 NotNil:
@@ -626,7 +922,7 @@ NotNil:
 IsAtom:
     ; the CDR is an atom, so we have a dotted pair
     call ccc %c_int @putchar(%c_int ASCII_PERIOD)
-    call ccc void @PrintAtom(%Exp %exp)
+    call NILCC void @PrintAtom(%Exp %exp)
     ret void
 
 IsCell:

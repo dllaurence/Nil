@@ -230,7 +230,7 @@ define NILCC %c_char*
 Loop:
     ; while (thisCell != nil)
     %thisCell = load %Exp* %pThisCell
-    %notNil = call NILCC i1 @NotNull(%Exp %thisCell)
+    %notNil = call NILCC i1 @NotNil(%Exp %thisCell)
     br i1 %notNil, label %BeginLoop, label %EndLoop
 
     BeginLoop:
@@ -281,7 +281,7 @@ define NILCC %c_char*
         assert(%haveInput)
         #endif
 
-    %notNil = call NILCC i1 @NotNull(%Exp %list)
+    %notNil = call NILCC i1 @NotNil(%Exp %list)
     br i1 %notNil, label %NotNil, label %IsNil
 
 IsNil:
