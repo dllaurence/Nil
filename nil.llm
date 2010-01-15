@@ -54,24 +54,23 @@
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
 
-#if 0
 ;**********************************************************************
 ; nil_quit
 ;
 ;**********************************************************************
 
-#define QUITARRAY_LEN 5
-@quitArray = internal constant [QUITARRAY_LEN x %c_char]
-    c"quit\00"
+    #define QUITARRAY_LEN 5
+    %QuitArrayType = type [QUITARRAY_LEN x %c_char]
+    @quitArray = internal constant %QuitArrayType c"quit\00"
 
 define NILCC %Exp
 @nil_quit(%Exp %exp)
 {
+    ; Ignore inputs
     call ccc void @exit(%c_int 0)
-
+    unreachable
     ret %Exp NIL_VALUE
 }
-#endif
 
 ;**********************************************************************
 ; GetEnv
@@ -83,23 +82,27 @@ define NILCC %Exp
 define NILCC %Exp
 @GetEnv()
 {
-#if 0
-    %quitStr = getelementptr [QUITARRAY_LEN x %c_char]* @quitArray,
-                                                i64 0, i64 0
+    %quitStr = getelementptr %QuitArrayType* @quitArray, i64 0, i64 0
     %quitPrim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* @nil_quit,
                                           %Word -1, %c_char* %quitStr)
     %quitSym = call NILCC %Exp @NewSymbol(%c_char* %quitStr)
+    ; FIXME: This is a dotted pair!!!
+    %quitCDR = call NILCC %Exp @nil_cons(%Exp %quitPrim, %Exp NIL_VALUE)
     %quitAssoc = call NILCC %Exp @nil_cons(%Exp %quitSym,
-                                           %Exp %quitPrim)
+                                           %Exp %quitCDR)
     %assocList1 = call NILCC %Exp @nil_cons(%Exp %quitAssoc,
                                             %Exp NIL_VALUE)
 
-    ret %Exp %assocList1
+#if 0
+; Debugging code to show the binding list on startup
+call %c_int @putchar(%c_int ASCII_NEWLINE)
+call NILCC void @PrintExp(%Exp %assocList1)
+call %c_int @putchar(%c_int ASCII_NEWLINE)
 #endif
-    ret %Exp NIL_VALUE
+
+    ret %Exp %assocList1
 }
 
-#if 0
 ;**********************************************************************
 ; nil_assoc
 ;
@@ -113,52 +116,76 @@ define NILCC %Exp
 ;
 ;**********************************************************************
 
+    #define EXPECTEDLISTARRAY_LEN 21
+    %ExpectedListType = type [EXPECTEDLISTARRAY_LEN x %c_char]
+    @expectedListArray = internal constant %ExpectedListType
+        c"assoc: expected list\00"
+
+    #define EXPECTEDBINDINGARRAY_LEN 24
+    %ExpectedBindingType = type [EXPECTEDBINDINGARRAY_LEN x %c_char]
+    @expectedBindingArray = internal constant %ExpectedBindingType
+        c"assoc: expected binding\00"
+
 define NILCC %Exp
 @nil_assoc(%Exp %key, %Exp %assocList)
 {
-    %haveAssocList = call NILCC i1 @NotNil(%Exp %assocList)
-    br i1 %haveAssocList, label %HaveList, label %NoList
+    %isList = call NILCC i1 @IsCell(%Exp %assocList)
+    br i1 %isList, label %HaveList, label %HaveAtomTag
 
-NoList:
+HaveAtomTag:
+    %haveNil = call NILCC i1 @IsNil(%Exp %assocList)
+    br i1 %haveNil, label %HaveNil, label %HaveAtom
+
+HaveNil:
+    ; The empty list is a list that contains no bindings, so valid
     ; This is our "not found" return value
     ret %Exp NIL_VALUE
 
+HaveAtom:
+    ; This is an error, throw an exception
+    %expectedListPtr = getelementptr %ExpectedListType*
+        @expectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %expectedListPtr)
+    br label %Exception
+
+Exception:
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_EXPECTED_LIST)
+    ret %Exp %xpn
+
 HaveList:
-    #ifndef NDEBUG
-    ; FIXME: this has to report an error, not explode in the user's
-    ; face.  However, since the interpreter controls the environment
-    ; (for now), it should never be called with anything but a list
-    ; of associations.
-    %isAssocList = call NILCC i1 @IsCell(%Exp %assocList)
-    assert(%isAssocList)
-    #endif
+    %firstBinding = call NILCC %Exp @nil_car(%Exp %assocList)
 
+    ; Is this really a binding?  It needs to be a cell, but
+    ; can be arbitrary otherwise
+    %isBinding = call NILCC i1 @IsCell(%Exp %firstBinding)
+    br i1 %isBinding, label %HaveBinding, label %NotBinding
+
+NotBinding:
+    ; we can't interpret this object, so throw an exception
+    ; This is an error, throw an exception
+    %expectedBindingPtr = getelementptr %ExpectedBindingType*
+        @expectedBindingArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %expectedBindingPtr)
+    br label %Exception
+
+HaveBinding:
     ; Does the first entry have the key?
-    %firstAssoc = call NILCC %Exp @nil_car(%Exp %assocList)
-
-    ; Our associations are lists.
-    #ifndef NDEBUG
-    %isAssoc = call NILCC i1 @IsCell(%Exp %firstAssoc)
-    assert(%isAssoc)
-    #endif
-
-    %thisKey = call NILCC %Exp @nil_car(%Exp %firstAssoc)
-    %found = call NILCC i1 @Eq(%Exp %key, %Exp %thisKey)
-
-    br i1 %found, label %Found, label %NotFound
+    %thisKey = call NILCC %Exp @nil_car(%Exp %firstBinding)
+    %notFound = call NILCC i1 @NotEq(%Exp %key, %Exp %thisKey)
+    br i1 %notFound, label %NotFound, label %Found
 
 Found:
     ; Note that we return the entire association--this allows,
     ; among other things, distinguishing between finding a nil
     ; value and finding no value
-    ret %Exp %firstAssoc
+    ret %Exp %firstBinding
 
 NotFound:
     %restAssoc = call NILCC %Exp @nil_cdr(%Exp %assocList)
     ; Trivial tail call
-    %value = call NILCC %Exp @nil_assoc(%Exp %key, %Exp %restAssoc)
+    %binding = call NILCC %Exp @nil_assoc(%Exp %key, %Exp %restAssoc)
 
-    ret %Exp %value
+    ret %Exp %binding
 }
 
 ;**********************************************************************
@@ -166,56 +193,53 @@ NotFound:
 ;
 ;**********************************************************************
 
-define NILCC %Exp
-@EnvLookup(%Exp %exp, %Exp %env)
-{
-;call %c_int @putchar(%c_int ASCII_S)
-    %haveEnv = call NILCC i1 @NotNil(%Exp %env)
-    br i1 %haveEnv, label %HaveEnv, label %IsNilEnv
-
-IsNilEnv:
-    ret %Exp NIL_VALUE
-
-HaveEnv:
-    #ifndef NDEBUG
-    ; Since the interpreter controls the environment (for now), it
-    ; should never be called with anything but a list of association
-    ; lists.
-    %isEnvCell = call NILCC i1 @IsCell(%Exp %exp)
-    assert(%isEnvCell)
-    #endif
-
-    ; Our environments are lists of lists.  Try to find the symbol
-    ; in the first one
-    %assocList = call NILCC %Exp @nil_car(%Exp %exp)
-
-    #ifndef NDEBUG
-    %isAssocCell = call NILCC i1 @IsCell(%Exp %assocList)
-    assert(%isAssocCell)
-    #endif
-
-    %firstValue = call NILCC %Exp @nil_mapfind(%Exp %assocList)
-
-    %found = CALCC i1 @NotNil(%Exp %firstValue)
-
-    br i1 %found, label %Found, label %NotFound
-
-Found:
-    ret %Exp %firstValue
-
-NotFound:
-
-    %nextEnv = call NILCC %Exp @nil_cdr(%Exp %env)
-    ; trivial tail-call
-    %nextValue = call NILCC %Exp @EnvLookup(%nextEnv)
-    ret %Exp %nextValue
-}
-#endif
+    #define UNKNOWNSYMBOLARRAY_LEN 16
+    %UnknownSymbolType = type [UNKNOWNSYMBOLARRAY_LEN x %c_char]
+    @unknownSymbolArray = internal constant %UnknownSymbolType
+        c"unknown symbol \00"
 
 define NILCC %Exp
 @EnvLookup(%Exp %exp, %Exp %env)
 {
-    ret %Exp %exp
+    ; FIXME: change from using assoc lists to using environments
+    ; (lists of assoc lists)
+    %binding = call NILCC %Exp @nil_assoc(%Exp %exp, %Exp %env)
+
+        #ifndef NDEBUG
+        ; When used internally, should be impossible for assoc
+        ; to throw an exception
+        %notException = call NILCC i1 @NotException(%Exp %binding)
+        assert(%notException)
+        #endif
+
+    %found = call NILCC i1 @NotNil(%Exp %binding)
+    br i1 %found, label %FoundSymbol, label %UnknownSymbol
+
+UnknownSymbol:
+    %unknownSymbolPtr = getelementptr
+        %UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0
+    call %c_int @putstring(%c_char* %unknownSymbolPtr)
+    call NILCC void @PrintExp(%Exp %exp)
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_UNKNOWN_SYMBOL)
+    ret %Exp %xpn
+
+FoundSymbol:
+    %cdr = call NILCC %Exp @nil_cdr(%Exp %binding)
+
+        #ifndef NDEBUG
+        ; Must be a list
+        %isCell = call NILCC i1 @IsCell(%Exp %cdr)
+        assert(%isCell)
+        ; Must be a 1-element list--we have no good use for anything
+        ; else!
+        %cddr = call NILCC %Exp @nil_cdr(%Exp %cdr)
+        %isNil = call NILCC i1 @IsNil(%Exp %cddr)
+        assert(%isNil)
+        #endif
+
+    %cadr = call NILCC %Exp @nil_car(%Exp %cdr)
+    ret %Exp %cadr
 }
 
 ;**********************************************************************
@@ -229,10 +253,11 @@ define NILCC %Exp
 ;call %c_int @putchar(%c_int ASCII_E)
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
 
-    switch %Tag %tag, label %CantHappen [
-
         ; Remember that here we will only see types produced by the
-        ; parser, not all types in the language
+        ; parser, not all types in the language, and the top level
+        ; caller will filter out parser exceptions for us.
+
+    switch %Tag %tag, label %CantHappen [
         %Tag CELL_TAG,      label %Cell
         %Tag SYMBOL_TAG,    label %SymbolTag
     ]
@@ -242,41 +267,35 @@ CantHappen:
     br label %CantHappen
 
 Cell:
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
-    %args = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
-    ; Or, possibly, cons them together so (apply fn arg*) works?
-    %result = call NILCC %Exp @Apply(%Exp %car, %Exp %args, %Exp %env)
-    ret %Exp %result
+    ; I claim apply should control the evaluation of its arguments,
+    ; so contrary to SICP we just pass the expression on
+    %return = call NILCC %Exp @Apply(%Exp %exp, %Exp %env)
+    ret %Exp %return
 
 SymbolTag:
     ;%evalExp = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %env)
     ;ret %Exp %evalExp
 
     %notNil = call NILCC i1 @NotNil(%Exp %exp)
-    ;br i1 %notNil, label %NotNil, label %IsNil
+    br i1 %notNil, label %Symbol, label %SelfEvaluate
     ; for now
-    br label %IsNil
+    ;br label %IsNil
 
-IsNil:
+SelfEvaluate:
     ; nil is self-evaluating
     ret %Exp %exp
 
+Symbol:
+    ; May be an exception
+    %value = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %env)
 #if 0
-NotNil:
-    %assoc = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %env)
-    %found = call NILCC i1 @NotNil(%Exp %assoc)
-    br i1 %found, label %Found, label %NotFound
-
-NotFound:
-    ; What to do until we get error reporting in?  Self evaluate, I guess.
-    ret %Exp %exp
-
-Found:
-    %valueList = call NILCC %Exp @nil_cdr(%Exp %assoc)
-    %value = call NILCC %Exp @nil_car(%Exp %valueList)
-    ret %Exp %value
+; Debugging code to print the symbol found in angle brackets
+call %c_int @putchar(%c_int ASCII_LANGLE)
+call NILCC void @PrintExp(%Exp %value)
+call %c_int @putchar(%c_int ASCII_RANGLE)
+call %c_int @putchar(%c_int ASCII_NEWLINE)
 #endif
+    ret %Exp %value
 }
 
 ;**********************************************************************
@@ -284,26 +303,67 @@ Found:
 ;
 ;**********************************************************************
 
-#define APPLYARRAY_LEN 6
-@applyArray = internal constant [APPLYARRAY_LEN x %c_char]
-    c"apply\00"
+    #define CANNOTAPPLYARRAY_LEN 14
+    %CannotApplyType = type [CANNOTAPPLYARRAY_LEN x %c_char]
+    @cannotApplyArray = internal constant %CannotApplyType
+        c"cannot apply \00"
 
 define NILCC %Exp
-@Apply(%Exp %fnExp, %Exp %args, %Exp %env)
+@Apply(%Exp %combination, %Exp %env)
 {
+Initial:
 ;call %c_int @putchar(%c_int ASCII_A)
-    ; For now, just say what we'd do
-    %applyPtr = getelementptr [APPLYARRAY_LEN x %c_char]* @applyArray,
-                                      i64 0, i64 0
 
-    %applySymbol = call NILCC %Exp @NewSymbol(%c_char* %applyPtr)
+        #ifndef NDEBUG
+        %isCell = call NILCC i1 @IsCell(%Exp %combination)
+        assert(%isCell)
+        #endif
 
-    %fn = call NILCC %Exp @Eval(%Exp %fnExp, %Exp %env)
+    %car = call NILCC %Exp @nil_car(%Exp %combination)
 
-    ; For now, just display what we'd do
-    %applyArgs = call NILCC %Exp @nil_cons(%Exp %fn, %Exp %args)
-    %result = call NILCC %Exp @nil_cons(%Exp %applySymbol, %Exp %applyArgs)
+    ; For now, always evaluate the function.  This may have to
+    ; change when we get to implementing user functions and
+    ; lambda, we'll see
+    %fn = call NILCC %Exp @Eval(%Exp %car, %Exp %env)
 
+    %tag = call NILCC %Tag @GetTag(%Exp %fn)
+
+        ; Remember that here we will only see types produced by the
+        ; parser, not all types in the language, and the top level
+        ; caller will filter out parser exceptions for us.
+
+    switch %Tag %tag, label %CantHappen [
+        %Tag EXCEPTION_TAG, label %Exception
+        %Tag CELL_TAG,      label %CannotApply
+        %Tag SYMBOL_TAG,    label %CannotApply
+        %Tag PRIMITIVE_TAG, label %Primitive
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+Exception:
+    ret %Exp %fn
+
+CannotApply:
+    %cannotApplyPtr = getelementptr %CannotApplyType* @cannotApplyArray,
+                                     i64 0, i64 0
+    call %c_int @putstring(%c_char* %cannotApplyPtr)
+    call NILCC void @PrintExp(%Exp %fn)
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_CANNOT_APPLY)
+    ret %Exp %xpn
+
+Primitive:
+    %prim = call NILCC %nil_primitive* @Exp2nil_primitive(%Exp %fn)
+    %primFnPtr = getelementptr %nil_primitive* %prim, i64 0, i32 0
+    %primFn = load %Exp (%Exp)** %primFnPtr
+
+    %cdr = call NILCC %Exp @nil_cdr(%Exp %combination)
+    ; We don't evaluate the args before calling--*all* primitives
+    ; are magic
+    %result = call NILCC %Exp %primFn(%Exp %cdr)
     ret %Exp %result
 }
 
@@ -311,6 +371,11 @@ define NILCC %Exp
 ; EvalList
 ;
 ;**********************************************************************
+
+#define DOTPAIRARRAY_LEN 36
+%DotPairType = type [DOTPAIRARRAY_LEN x %c_char]
+@dotPairArray = internal constant %DotPairType
+    c"Error: can't evaluate a dotted pair\00"
 
 define NILCC %Exp
 @EvalList(%Exp %exp, %Exp %env)
@@ -321,24 +386,41 @@ define NILCC %Exp
 
 Atom:
     %isNil = call NILCC i1 @IsNil(%Exp %exp)
+    br i1 %isNil, label %IsNil, label %NotNil
 
-    ; Non-nil would be weird--evaluating a dotted pair
-    ; FIXME: obviously this has to report an error, not explode all
-    ; over the user.  There isn't yet any way for the user to cause
-    ; this though.
-    assert(%isNil)
+IsNil:
     ret %Exp %exp
+
+NotNil:
+    ; FIXME: when we have the ability to produce dotted pairs,
+    ; this code needs to be tested
+    ; Weird--evaluating a dotted pair
+    %dotPairString = getelementptr %DotPairType* @dotPairArray,
+                                                    i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %dotPairString)
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
+    %errorExp = call NILCC %Exp @Exception2Exp(%Word NIL_EVAL_DOTPAIR)
+    ret %Exp %errorExp
 
 Cell:
     %car = call NILCC %Exp @nil_car(%Exp %exp)
     %first = call NILCC %Exp @Eval(%Exp %car, %Exp %env)
+    %firstOK = call NILCC i1 @NotException(%Exp %first)
+    br i1 %firstOK, label %DoCDR, label %Exception
 
+DoCDR:
     %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
     %rest = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
+    %restOK = call NILCC i1 @NotException(%Exp %rest)
+    br i1 %restOK, label %DoCons, label %Exception
 
+DoCons:
     %cons = call NILCC %Exp @nil_cons(%Exp %first, %Exp %rest)
-
     ret %Exp %cons
+
+Exception:
+    %xpn = phi %Exp [%first, %Cell], [%rest, %DoCDR]
+    ret %Exp %xpn
 }
 
 ;**********************************************************************
@@ -400,33 +482,134 @@ Done:
 }
 
 ;**********************************************************************
-; Some interpreter messages
+; PrintWelcome
 ;
 ;**********************************************************************
 
-#define WELCOMEARRAY_LEN 62
-@welcomeArray = internal constant [WELCOMEARRAY_LEN x %c_char]
-    c"Welcome to nil v0.0.6.  Press <ctrl>-D at the prompt to exit.\00"
+    #define WELCOMEARRAY_LEN 62
+    @welcomeArray = internal constant [WELCOMEARRAY_LEN x %c_char]
+        c"Welcome to nil v0.0.7.  Enter '(quit)' at the prompt to exit.\00"
 
-#define PROMPTARRAY_LEN 6
-@promptArray = internal constant [PROMPTARRAY_LEN x %c_char]
-    c"nil> \00"
+define NILCC void
+@PrintWelcome()
+{
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+    %welcomeString = getelementptr [WELCOMEARRAY_LEN x %c_char]*
+                                           @welcomeArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %welcomeString)
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
 
-#define KNOWNARRAY_LEN 16
-@knownArray = internal constant [KNOWNARRAY_LEN x %c_char]
-    c"Known strings: \00"
+    ret void
+}
 
-#define BADCHARARRAY_LEN 16
-@badCharArray = internal constant [BADCHARARRAY_LEN x %c_char]
-    c"#bad character#\00"
+;**********************************************************************
+; PrintPrompt
+;
+;**********************************************************************
 
-#define IOERRORARRAY_LEN 20
-@ioErrorArray = internal constant [IOERRORARRAY_LEN x %c_char]
-    c"I/O error on input.\00"
+    #define KNOWNARRAY_LEN 16
+    @knownArray = internal constant [KNOWNARRAY_LEN x %c_char]
+        c"Known strings: \00"
 
-#define RPARENARRAY_LEN 14
-@rParenArray = internal constant [RPARENARRAY_LEN x %c_char]
-    c"Unmatched ')'\00"
+    #define PROMPTARRAY_LEN 6
+    @promptArray = internal constant [PROMPTARRAY_LEN x %c_char]
+        c"nil> \00"
+
+define NILCC void
+@PrintPrompt()
+{
+#if 0
+    ; Show the current list of strings before each new prompt
+    %knownStr = getelementptr [KNOWNARRAY_LEN x %c_char]* @knownArray,
+                                                          i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %knownStr)
+    call NILCC void @PrintAllStrings()
+    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+#endif
+
+    ; Print the prompt
+    %promptString = getelementptr [PROMPTARRAY_LEN x %c_char]*
+                                           @promptArray, i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %promptString)
+
+    ret void
+}
+
+;**********************************************************************
+; PrintResultPrefix
+;
+;**********************************************************************
+
+    #define RESULTARRAY_LEN 9
+    %ResultArrayType = type [RESULTARRAY_LEN x %c_char]
+    @resultArray = internal constant %ResultArrayType
+        c"    ==> \00"
+
+define NILCC void
+@PrintResultPrefix()
+{
+    %resultString = getelementptr %ResultArrayType*
+                                           @resultArray, i64 0, i64 0
+    call ccc %c_int @putstring(%c_char* %resultString)
+
+    ret void
+}
+
+;**********************************************************************
+; HandleParserException
+;
+;**********************************************************************
+
+    #define BADCHARARRAY_LEN 16
+    @badCharArray = internal constant [BADCHARARRAY_LEN x %c_char]
+        c"#bad character#\00"
+
+    #define IOERRORARRAY_LEN 20
+    @ioErrorArray = internal constant [IOERRORARRAY_LEN x %c_char]
+        c"I/O error on input.\00"
+
+    #define RPARENARRAY_LEN 14
+    @rParenArray = internal constant [RPARENARRAY_LEN x %c_char]
+        c"Unmatched ')'\00"
+
+define i1
+@HandleParserException(%Exp %code)
+{
+    switch %Exp %code, label %CantHappen [
+
+        %Exp NIL_EOF,          label %EOF
+        %Exp NIL_IOERROR,      label %IOError
+        %Exp NIL_BADCHAR,      label %BadChar
+        %Exp NIL_EXTRA_RPAREN, label %ExtraRParen
+    ]
+
+CantHappen:
+    cant_happen()
+    br label %CantHappen
+
+EOF:
+    ret i1 false
+
+IOError:
+    %ioErrorMsg = getelementptr [IOERRORARRAY_LEN x %c_char]*
+                        @ioErrorArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %ioErrorMsg)
+    ret i1 false
+
+BadChar:
+    %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
+                        @badCharArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %badCharMsg)
+    call NILCC void @DiscardLine()
+    ret i1 true
+
+ExtraRParen:
+    %rParenMsg = getelementptr [RPARENARRAY_LEN x %c_char]*
+                        @rParenArray, i64 0, i64 0
+    call ccc %c_int @puts(%c_char* %rParenMsg)
+    call NILCC void @DiscardLine()
+    ret i1 true
+}
 
 ;**********************************************************************
 ; main
@@ -441,25 +624,14 @@ define %c_int
     %hadInputPtr = alloca i1
     store i1 0, i1* %hadInputPtr
 
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
-    %welcomeString = getelementptr [WELCOMEARRAY_LEN x %c_char]*
-                                           @welcomeArray, i64 0, i64 0
-    call ccc %c_int @puts(%c_char* %welcomeString)
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
-    br label %PrintPrompt
+    ; The initial evaluation environment
+    %env = call NILCC %Exp @GetEnv()
 
-PrintPrompt:
-    ; Show the current list of strings before each new prompt
-    %knownStr = getelementptr [KNOWNARRAY_LEN x %c_char]* @knownArray,
-                                                          i64 0, i64 0
-    call ccc %c_int @putstring(%c_char* %knownStr)
-    call NILCC void @PrintAllStrings()
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
+    call NILCC void @PrintWelcome()
+    br label %Prompt
 
-    ; Print the prompt
-    %promptString = getelementptr [PROMPTARRAY_LEN x %c_char]*
-                                           @promptArray, i64 0, i64 0
-    call ccc %c_int @putstring(%c_char* %promptString)
+Prompt:
+    call NILCC void @PrintPrompt()
     br label %ReadExp
 
 ReadExp:
@@ -470,77 +642,49 @@ ReadExp:
     ; handlers need it
     %hadInput = load i1* %hadInputPtr
 
-    switch %c_int %code, label %PrintChar [
+    switch %c_int %code, label %CantHappen [
 
-        %c_int NIL_SYMBOL,   label   %EvalExp
-        %c_int NIL_CELL,     label   %EvalExp
+        %c_int NIL_EXCEPTION, label  %ParseException
 
         %c_int ASCII_NEWLINE,  label %NewLine
 
-        %c_int NIL_EXCEPTION, label  %Exception
-    ]
-
-PrintChar:
-    call ccc %c_int @putchar(%c_int %code)
-    call ccc %c_int @putchar(%c_int ASCII_SPACE)
-    store i1 1, i1* %hadInputPtr
-    br label %ReadExp
-
-EvalExp:
-#if 1
-    %unevalExp = extractvalue %ParseExp %parseExp, 1
-    %env = call NILCC %Exp @GetEnv()
-    %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp %env)
-#else
-    %exp = extractvalue %ParseExp %parseExp, 1
-#endif
-    call NILCC void @PrintExp(%Exp %exp)
-    call ccc %c_int @putchar(%c_int ASCII_SPACE)
-    store i1 1, i1* %hadInputPtr
-    br label %ReadExp
-
-NewLine:
-    call NILCC void @NewlineIf(i1 %hadInput)
-    store i1 0, i1* %hadInputPtr
-    br label %PrintPrompt
-
-Exception:
-    %exception = extractvalue %ParseExp %parseExp, 1
-
-    switch %Exp %exception, label %CantHappen [
-
-        %Exp NIL_EOF,          label %Exit
-        %Exp NIL_IOERROR,      label %ExitIOError
-        %Exp NIL_BADCHAR,      label %WarnBadChar
-        %Exp NIL_EXTRA_RPAREN, label %ExtraRParen
+        %c_int NIL_SYMBOL,   label   %EvalExp
+        %c_int NIL_CELL,     label   %EvalExp
     ]
 
 CantHappen:
     cant_happen()
     br label %CantHappen
 
-ExitIOError:
-    %ioErrorMsg = getelementptr [IOERRORARRAY_LEN x %c_char]*
-                        @ioErrorArray, i64 0, i64 0
-    call ccc %c_int @puts(%c_char* %ioErrorMsg)
-    br label %Exit
-
-WarnBadChar:
+ParseException:
     call NILCC void @NewlineIf(i1 %hadInput)
-    %badCharMsg = getelementptr [BADCHARARRAY_LEN x %c_char]*
-                        @badCharArray, i64 0, i64 0
-    call ccc %c_int @puts(%c_char* %badCharMsg)
+    %exception = extractvalue %ParseExp %parseExp, 1
+    %continue = call NILCC i1 @HandleParserException(%Exp %exception)
     store i1 0, i1* %hadInputPtr
-    call NILCC void @DiscardLine()
-    br label %ReadExp
+    br i1 %continue, label %ReadExp, label %Exit
 
-ExtraRParen:
+NewLine:
     call NILCC void @NewlineIf(i1 %hadInput)
-    %rParenMsg = getelementptr [RPARENARRAY_LEN x %c_char]*
-                        @rParenArray, i64 0, i64 0
-    call ccc %c_int @puts(%c_char* %rParenMsg)
     store i1 0, i1* %hadInputPtr
+    br label %Prompt
+
+EvalExp:
+    %unevalExp = extractvalue %ParseExp %parseExp, 1
+    %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp %env)
+    call NILCC void @PrintResultPrefix()
+    call NILCC void @PrintExp(%Exp %exp)
+
+    ; If we got an exception, toss the rest of the line
+    %evalOK = call NILCC i1 @NotException(%Exp %exp)
+    br i1 %evalOK, label %EvalOK, label %EvalException
+
+EvalException:
     call NILCC void @DiscardLine()
+    br label %EvalOK
+
+EvalOK:
+    call ccc %c_int @putchar(%c_int ASCII_SPACE)
+    store i1 1, i1* %hadInputPtr
     br label %ReadExp
 
 Exit:

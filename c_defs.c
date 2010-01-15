@@ -56,6 +56,7 @@ main(int argc, char *argv[])
 
     IMPORT_TYPE(char);
     IMPORT_TYPE(int);
+    IMPORT_TYPE(long);
     IMPORT_TYPE(intptr_t);
     IMPORT_TYPE(size_t);
 #if 0

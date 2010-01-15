@@ -35,6 +35,12 @@
     #define ASCII_RPAREN    41
     #define ASCII_PERIOD    46
     #define ASCII_COLON     58
+    #define ASCII_SEMICOLON 59
+    #define ASCII_LANGLE    60
+    #define ASCII_LT        60
+    #define ASCII_EQUAL     61
+    #define ASCII_RANGLE    62
+    #define ASCII_GT        62
 
     ; Digits
     #define ASCII_0         48
@@ -58,6 +64,8 @@
 
     ; Miniscules
     #define ASCII_a         97
+    #define ASCII_b         98
+    #define ASCII_c         99
 
     #define ASCII_DEL      127
 
@@ -117,12 +125,22 @@
     declare ccc %c_int @putstring(%c_char*) ; puts(), sans newline
     ; Print an int
     declare ccc void @puti(%c_int)
+    ; Print a long
+    declare ccc void @putl(%c_long)
     ; Print a pointer in hexadecimal
     declare ccc void @putptr(i8*)
 
-    ; We define our own codes, whether they match or not, to decouple our
-    ; code from libc and because they aren't 1-1 anyway (IO_ERROR is covering
-    ; anything reported by errno, for example)
+    #if C_INTPTR_T_BITSOF == 64
+    #define PutWord(word) putl(word)
+    #elif C_INTPTR_T_BITSOF == 32
+    #define PutWord(word) puti(word)
+    #else
+    Die!!!
+    #endif
+
+    ; We define our own codes, whether they match or not, to decouple
+    ; our code from libc and because they aren't 1-1 anyway (IO_ERROR
+    ; is covering anything reported by errno, for example)
     #define IO_EOF      -1
     #define IO_ERROR    -10
 
