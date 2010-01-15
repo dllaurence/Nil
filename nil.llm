@@ -242,6 +242,7 @@ FoundSymbol:
 define NILCC %Exp
 @Eval(%Exp %exp, %Exp %env)
 {
+;call %c_int @putchar(%c_int ASCII_E)
     %tag = call NILCC %Tag @GetTag(%Exp %exp)
 
         ; Remember that here we will only see types produced by the
