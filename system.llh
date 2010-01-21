@@ -33,6 +33,8 @@
     #define ASCII_SQUOTE    39
     #define ASCII_LPAREN    40
     #define ASCII_RPAREN    41
+    #define ASCII_PLUS      43
+    #define ASCII_MINUS     45
     #define ASCII_PERIOD    46
     #define ASCII_COLON     58
     #define ASCII_SEMICOLON 59
@@ -45,6 +47,14 @@
     ; Digits
     #define ASCII_0         48
     #define ASCII_1         49
+    #define ASCII_2         50
+    #define ASCII_3         51
+    #define ASCII_4         52
+    #define ASCII_5         53
+    #define ASCII_6         54
+    #define ASCII_7         55
+    #define ASCII_8         56
+    #define ASCII_9         57
 
     ; Majescules
     #define ASCII_A         65
@@ -158,6 +168,8 @@
     declare ccc %c_int @strcmp(%c_char*, %c_char*)
 
     declare ccc %c_size_t @strlen(%c_char* %string)
+
+    declare ccc %c_long   @strtol(%c_char* %str, %c_char** %end, %c_int %base)
 
 ; Other libc
 

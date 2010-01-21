@@ -28,8 +28,8 @@
 ; this code on anything that old?
 
     %Word = type %c_intptr_t
-    #define WORD_T_SIZEOF C_INTPTR_T_SIZEOF
-    #define WORD_T_BITSOF C_INTPTR_T_BITSOF
+    #define WORD_SIZEOF C_INTPTR_T_SIZEOF
+    #define WORD_BITSOF C_INTPTR_T_BITSOF
 
 ; Codes common to multiple modules
 
@@ -53,6 +53,9 @@
     ; These will go away when the parser uses the exception type
     #define NIL_SYMBOL          -31
     #define NIL_CELL            -32
+    #if 0
+    #define NIL_INTEGER         -33
+    #endif
 
     ; Evaluator Exceptions
     #define NIL_UNKNOWN_SYMBOL    0

@@ -226,6 +226,21 @@ define NILCC %Word
 }
 
 ;**********************************************************************
+; SignedShiftOutTag
+;
+; Same as ShiftOutTag, but with a sign-preserving shift.
+;
+;**********************************************************************
+
+define NILCC %Word
+@SignedShiftOutTag(%Exp %exp)
+{
+    %value = ashr %Exp %exp, TAG_BITS
+
+    ret %Word %value
+}
+
+;**********************************************************************
 ; ShiftInTag
 ;
 ; Warning: this low-level function leaves a blank tag field to be
@@ -480,7 +495,7 @@ define NILCC %Word
         br i1 %checkConversion, label %Check, label %NoCheck
         Check:
         store i1 0, i1* @except_guard
-        %newExp = call NILCC %Word @Exception2Exp(%Word %result)
+        %newExp = call NILCC %Exp @Exception2Exp(%Word %result)
         store i1 1, i1* @except_guard
         %equal = icmp eq %Exp %exp, %newExp
         assert(%equal)
@@ -490,6 +505,118 @@ define NILCC %Word
 
     ret %Word %result
 }
+
+#if 0
+;**********************************************************************
+; MinIntegerWord
+;
+; Returns the smallest (negative) representable Integer *as a signed
+; Word* (i.e. *NOT* an Exp with a tag).
+;
+;**********************************************************************
+
+define NILCC %Word
+@MinIntegerWord()
+{
+    %shiftBits = sub %Word WORD_BITSOF, 1
+    %minSWord = shl %Word 1, %shiftBits
+    %minInteger = ashr %Word %maxSWord, TAG_BITS
+    ret %Word %minInteger
+}
+
+;**********************************************************************
+; MaxIntegerWord
+;
+; Returns the largest representable Integer *as a Word* (i.e. *NOT* an
+; Exp).
+;
+;**********************************************************************
+
+define NILCC %Word
+@MaxIntegerWord()
+{
+    %shiftBits = add %Word TAG_BITS, 1
+    %maxInteger = lshr %Word -1, %shiftBits
+    ret %Word %maxInteger
+}
+
+;**********************************************************************
+; nil_integer2Exp
+;
+; Converts an integer to an Expression with the correct tag.
+;
+;**********************************************************************
+
+#ifndef NDEBUG
+@int_guard = private global i1 1
+#endif
+
+define NILCC %Exp
+@nil_integer2Exp(%nil_integer %integer)
+{
+        #if 0
+        ; Not ready for prime time yet
+        ; Tediously detect signed overflow
+        %shiftBits = sub %Word WORD_BITSOF, 1
+        %maxSWord = shl %Word 1, %shiftBits
+        %minSWord = add %Word %maxSWord, 1
+
+        %minInt = call NILCC %Word @ShiftOutTag(%Exp -1)
+        %greatEnough = icmp ule %Word %integer, %maxInt
+        assert(%inBounds)
+        #endif
+
+    %intWord = sext %nil_integer %integer to %Word
+    %untaggedExp = call NILCC %Exp @ShiftInTag(%Word %intWord)
+    %exp = call NILCC %Exp @AddTag(%Exp %untaggedExp, %Tag INTEGER_TAG)
+
+        #if 0
+        %checkConversion = load i1* @int_guard
+        br i1 %checkConversion, label %Check, label %NoCheck
+        Check:
+        store i1 0, i1* @int_guard
+        %newInt = call NILCC %Word @Exp2nil_integer(%Exp %exp)
+        store i1 1, i1* @int_guard
+        %equal = icmp eq %Word %integer, %newInt
+        assert(%equal)
+        br label %NoCheck
+        NoCheck:
+        #endif
+
+    ret %Exp %exp
+}
+
+;**********************************************************************
+; Exp2nil_integer
+;
+; Extracts a nil_integer from an integer expression.
+;
+; FIXME: should obviously be inlined along with the above.
+;
+;**********************************************************************
+
+define NILCC %nil_integer
+@Exp2nil_integer(%Exp %exp)
+{
+    %resultWord = call NILCC %Word @SignedShiftOutTag(%Exp %exp)
+    %result = trunc %Word %resultWord to %nil_integer
+
+        #ifndef NDEBUG
+        %checkConversion = load i1* @int_guard
+        br i1 %checkConversion, label %Check, label %NoCheck
+        Check:
+        store i1 0, i1* @int_guard
+        %newExp = call NILCC %Exp @nil_integer2Exp(%Word %result)
+        store i1 1, i1* @int_guard
+        %equal = icmp eq %Exp %exp, %newExp
+        assert(%equal)
+        br label %NoCheck
+        NoCheck:
+        #endif
+
+    ret %nil_integer %result
+}
+#endif
 
 ;**********************************************************************
 ; The Seven Operators
@@ -592,7 +719,7 @@ define NILCC %Exp
 ;**********************************************************************
 ; IsSymbol
 ;
-; Returns true if the expression is a (possibly nil) symbol.
+; Returns true iff the expression is a (possibly nil) symbol.
 ;
 ;**********************************************************************
 
@@ -607,7 +734,7 @@ define NILCC i1
 ;**********************************************************************
 ; IsCell
 ;
-; Returns true if the expression is a (non-nil) cell.
+; Returns true iff the expression is a (non-nil) cell.
 ;
 ;**********************************************************************
 
@@ -622,7 +749,7 @@ define NILCC i1
 ;**********************************************************************
 ; IsPrimitive
 ;
-; Returns true if the expression is a primitive.
+; Returns true iff the expression is a primitive.
 ;
 ;**********************************************************************
 
@@ -637,7 +764,7 @@ define NILCC i1
 ;**********************************************************************
 ; IsException
 ;
-; Returns true if the expression is an exception.
+; Returns true iff the expression is an exception.
 ;
 ;**********************************************************************
 
@@ -652,7 +779,7 @@ define NILCC i1
 ;**********************************************************************
 ; NotException
 ;
-; Returns false if the expression is an exception.
+; Returns false iff the expression is an exception.
 ;
 ;**********************************************************************
 
@@ -664,10 +791,42 @@ define NILCC i1
     ret i1 %exceptionp
 }
 
+#if 0
+;**********************************************************************
+; IsInteger
+;
+; Returns true iff the expression is an integer.
+;
+;**********************************************************************
+
+define NILCC i1
+@IsInteger(%Exp %exp)
+{
+    %integerp = call NILCC i1 @TagIs(%Exp %exp, %Tag INTEGER_TAG)
+
+    ret i1 %integerp
+}
+
+;**********************************************************************
+; NotInteger
+;
+; Returns false iff the expression is an integer.
+;
+;**********************************************************************
+
+define NILCC i1
+@NotInteger(%Exp %exp)
+{
+    %integerp = call NILCC i1 @TagIsNot(%Exp %exp, %Tag INTEGER_TAG)
+
+    ret i1 %integerp
+}
+#endif
+
 ;**********************************************************************
 ; IsNil
 ;
-; Returns true if the expression is nil.
+; Returns true iff the expression is nil.
 ;
 ;**********************************************************************
 
@@ -682,7 +841,7 @@ define NILCC i1
 ;**********************************************************************
 ; NotNil
 ;
-; Returns true if the expression is not nil.
+; Returns true iff the expression is not nil.
 ;
 ;**********************************************************************
 
@@ -801,9 +960,6 @@ define NILCC %Exp
 ;**********************************************************************
 ; PrintExp
 ;
-; FIXME: should use the atom predicate and factor out a PrintAtom
-; method.
-;
 ;**********************************************************************
 
 define NILCC void
@@ -850,10 +1006,13 @@ define NILCC void
 
     switch %Tag %tag, label %CantHappen [
 
-        %Tag SYMBOL_TAG,    label %SymbolTag
-        %Tag   CELL_TAG,    label %CantHappen
+        %Tag    SYMBOL_TAG, label %SymbolTag
+        %Tag      CELL_TAG, label %CantHappen
         %Tag PRIMITIVE_TAG, label %IsPrimitive
         %Tag EXCEPTION_TAG, label %IsException
+#if 0
+        %Tag   INTEGER_TAG, label %IsInteger
+#endif
     ]
 
 CantHappen:
@@ -895,6 +1054,14 @@ IsException:
                      @printf(%c_char* %exceptionString,
                              %Word %code)
     ret void
+
+#if 0
+IsInteger:
+    %integer = call NILCC %nil_integer @Exp2nil_integer(%Exp %exp)
+    %intWord = zext %nil_integer %integer to %Word
+    call void @PutWord(%Word %intWord)
+    ret void
+#endif
 }
 
 ;**********************************************************************

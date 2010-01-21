@@ -86,18 +86,21 @@ Loop:
             %state = load %Word* %pState
             switch %Word %state, label %Next_Error [
 
-                %Word 0, label %Start
-                %Word 1, label %Token
+                %Word 0, label %StartState
+                %Word 1, label %TokenState
+#if 0
+                %Word 2, label %IntegerState
+                %Word 3, label %PrefixState
+#endif
             ]
 
         Next_Error:
             cant_happen()
-            br label %Next_Error ; This will get some attention if somehow
-                                 ; we screw up the call to abort()
+            br label %Next_Error
 
-    Start:
+    StartState:
             ; Throw away whitespace
-            switch %c_int %currentChar, label %Start_TokenChar [
+            switch %c_int %currentChar, label %ToToken [
 
                 %c_int NIL_EOF,        label %AcceptException
                 %c_int NIL_IOERROR,    label %AcceptException
@@ -113,36 +116,130 @@ Loop:
 
                 %c_int ASCII_LPAREN,   label %AcceptChar
                 %c_int ASCII_RPAREN,   label %AcceptChar
+
+#if 0
+                %c_int ASCII_PLUS,     label %ToPrefix
+                %c_int ASCII_MINUS,    label %ToPrefix
+
+                %c_int ASCII_0,        label %ToInteger
+                %c_int ASCII_1,        label %ToInteger
+                %c_int ASCII_2,        label %ToInteger
+                %c_int ASCII_3,        label %ToInteger
+                %c_int ASCII_4,        label %ToInteger
+                %c_int ASCII_5,        label %ToInteger
+                %c_int ASCII_6,        label %ToInteger
+                %c_int ASCII_7,        label %ToInteger
+                %c_int ASCII_8,        label %ToInteger
+                %c_int ASCII_9,        label %ToInteger
+#endif
             ]
 
-        Start_TokenChar:
-            ; Change to the Token state
-            store %Word 1, %Word* %pState
-            br label %Token
-
-    Token:
-
-            switch %c_int %currentChar, label %Token_AppendChar [
-
-                %c_int NIL_EOF,        label %AcceptSymbol
-                %c_int NIL_IOERROR,    label %AcceptSymbol
-                %c_int NIL_BADCHAR,    label %AcceptSymbol
-
-                %c_int ASCII_TAB,      label %AcceptSymbol
-                %c_int ASCII_NEWLINE,  label %AcceptSymbol
-                %c_int ASCII_VTAB,     label %AcceptSymbol
-                %c_int ASCII_FORMFEED, label %AcceptSymbol
-                %c_int ASCII_CR,       label %AcceptSymbol
-                %c_int ASCII_SPACE,    label %AcceptSymbol
-                %c_int ASCII_DEL,      label %AcceptSymbol
-
-                %c_int ASCII_LPAREN,   label %AcceptSymbol
-                %c_int ASCII_RPAREN,   label %AcceptSymbol
-            ]
-
-        Token_AppendChar:
+#if 0
+        ToPrefix:
             call NILCC void @AppendLexemeChar(%c_int %currentChar)
+            store %Word 3, %Word* %pState
             br label %Loop
+#endif
+
+        ToToken:
+            call NILCC void @AppendLexemeChar(%c_int %currentChar)
+            store %Word 1, %Word* %pState
+            br label %Loop
+
+#if 0
+        ToInteger:
+            call NILCC void @AppendLexemeChar(%c_int %currentChar)
+            store %Word 2, %Word* %pState
+            br label %Loop
+
+    IntegerState:
+
+            switch %c_int %currentChar, label %ToToken [
+
+                %c_int NIL_EOF,        label %AcceptComposite
+                %c_int NIL_IOERROR,    label %AcceptComposite
+                %c_int NIL_BADCHAR,    label %AcceptComposite
+
+                %c_int ASCII_TAB,      label %AcceptComposite
+                %c_int ASCII_NEWLINE,  label %AcceptComposite
+                %c_int ASCII_VTAB,     label %AcceptComposite
+                %c_int ASCII_FORMFEED, label %AcceptComposite
+                %c_int ASCII_CR,       label %AcceptComposite
+                %c_int ASCII_SPACE,    label %AcceptComposite
+                %c_int ASCII_DEL,      label %AcceptComposite
+
+                %c_int ASCII_LPAREN,   label %AcceptComposite
+                %c_int ASCII_RPAREN,   label %AcceptComposite
+
+                %c_int ASCII_0,        label %AppendChar
+                %c_int ASCII_1,        label %AppendChar
+                %c_int ASCII_2,        label %AppendChar
+                %c_int ASCII_3,        label %AppendChar
+                %c_int ASCII_4,        label %AppendChar
+                %c_int ASCII_5,        label %AppendChar
+                %c_int ASCII_6,        label %AppendChar
+                %c_int ASCII_7,        label %AppendChar
+                %c_int ASCII_8,        label %AppendChar
+                %c_int ASCII_9,        label %AppendChar
+            ]
+#endif
+
+    TokenState:
+
+            switch %c_int %currentChar, label %AppendChar [
+
+                %c_int NIL_EOF,        label %AcceptComposite
+                %c_int NIL_IOERROR,    label %AcceptComposite
+                %c_int NIL_BADCHAR,    label %AcceptComposite
+
+                %c_int ASCII_TAB,      label %AcceptComposite
+                %c_int ASCII_NEWLINE,  label %AcceptComposite
+                %c_int ASCII_VTAB,     label %AcceptComposite
+                %c_int ASCII_FORMFEED, label %AcceptComposite
+                %c_int ASCII_CR,       label %AcceptComposite
+                %c_int ASCII_SPACE,    label %AcceptComposite
+                %c_int ASCII_DEL,      label %AcceptComposite
+
+                %c_int ASCII_LPAREN,   label %AcceptComposite
+                %c_int ASCII_RPAREN,   label %AcceptComposite
+            ]
+
+#if 0
+    PrefixState:
+
+            switch %c_int %currentChar, label %ToToken [
+
+                %c_int NIL_EOF,        label %AcceptComposite
+                %c_int NIL_IOERROR,    label %AcceptComposite
+                %c_int NIL_BADCHAR,    label %AcceptComposite
+
+                %c_int ASCII_TAB,      label %AcceptComposite
+                %c_int ASCII_NEWLINE,  label %AcceptComposite
+                %c_int ASCII_VTAB,     label %AcceptComposite
+                %c_int ASCII_FORMFEED, label %AcceptComposite
+                %c_int ASCII_CR,       label %AcceptComposite
+                %c_int ASCII_SPACE,    label %AcceptComposite
+                %c_int ASCII_DEL,      label %AcceptComposite
+
+                %c_int ASCII_LPAREN,   label %AcceptComposite
+                %c_int ASCII_RPAREN,   label %AcceptComposite
+
+                %c_int ASCII_0,        label %ToInteger
+                %c_int ASCII_1,        label %ToInteger
+                %c_int ASCII_2,        label %ToInteger
+                %c_int ASCII_3,        label %ToInteger
+                %c_int ASCII_4,        label %ToInteger
+                %c_int ASCII_5,        label %ToInteger
+                %c_int ASCII_6,        label %ToInteger
+                %c_int ASCII_7,        label %ToInteger
+                %c_int ASCII_8,        label %ToInteger
+                %c_int ASCII_9,        label %ToInteger
+            ]
+#endif
+
+    AppendChar:
+        call NILCC void @AppendLexemeChar(%c_int %currentChar)
+        br label %Loop
 
 AcceptException:
     ; Shouldn't be possible now
@@ -154,7 +251,7 @@ AcceptChar:
                                                %c_int %currentChar, 0
     ret %Token %char
 
-AcceptSymbol:
+AcceptComposite:
     ; Push back the non-Symbol character we found for the next call
     call ccc void @ungetchar_asserted(%c_int %currentChar)
 
@@ -164,9 +261,31 @@ AcceptSymbol:
     %lexemePtr = getelementptr [LEXEMEBUFFER_SIZE x %c_char]* @lexemeBuffer,
                                                             i64 0, i64 0
     %strWord = ptrtoint %c_char* %lexemePtr to %Word
-    %struct3 = insertvalue %Token {%c_int NIL_SYMBOL, %Word 0},
+
+    switch %Word %state, label %Accept_Error [
+
+        %Word 1, label %AcceptSymbol
+#if 0
+        %Word 2, label %AcceptInteger
+#endif
+        %Word 3, label %AcceptSymbol
+    ]
+
+Accept_Error:
+    cant_happen()
+    br label %Next_Error
+
+AcceptSymbol:
+    %symbolStruct = insertvalue %Token {%c_int NIL_SYMBOL, %Word undef},
                                                        %Word %strWord, 1
-    ret %Token %struct3
+    ret %Token %symbolStruct
+
+#if 0
+AcceptInteger:
+    %integerStruct = insertvalue %Token {%c_int NIL_INTEGER, %Word undef},
+                                                       %Word %strWord, 1
+    ret %Token %integerStruct
+#endif
 }
 
 ;**********************************************************************

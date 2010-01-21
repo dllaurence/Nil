@@ -260,6 +260,9 @@ define NILCC %Exp
     switch %Tag %tag, label %CantHappen [
         %Tag CELL_TAG,      label %Cell
         %Tag SYMBOL_TAG,    label %SymbolTag
+#if 0
+        %Tag INTEGER_TAG,   label %SelfEvaluate
+#endif
     ]
 
 CantHappen:
@@ -572,7 +575,7 @@ define NILCC void
     @rParenArray = internal constant [RPARENARRAY_LEN x %c_char]
         c"Unmatched ')'\00"
 
-define i1
+define NILCC i1
 @HandleParserException(%Exp %code)
 {
     switch %Exp %code, label %CantHappen [
@@ -644,12 +647,15 @@ ReadExp:
 
     switch %c_int %code, label %CantHappen [
 
-        %c_int NIL_EXCEPTION, label  %ParseException
+        %c_int NIL_EXCEPTION, label   %ParseException
 
-        %c_int ASCII_NEWLINE,  label %NewLine
+        %c_int ASCII_NEWLINE, label   %NewLine
 
-        %c_int NIL_SYMBOL,   label   %EvalExp
-        %c_int NIL_CELL,     label   %EvalExp
+        %c_int NIL_SYMBOL,    label   %EvalExp
+        %c_int NIL_CELL,      label   %EvalExp
+#if 0
+        %c_int NIL_INTEGER,   label   %EvalExp
+#endif
     ]
 
 CantHappen:

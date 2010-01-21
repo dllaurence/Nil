@@ -43,24 +43,41 @@
     ; a printing format
     %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*}
 
+    ; For nil_integer, see below because it depends on the number of
+    ; tag bits
+
 ; Tag field type values.
 
     ; This and the *_TAG constants are the only places where the code
     ; assumes the size of the tag field, so it can be extended as needed
     ; simply by changing the type here.
 
-    #define TAG_BITS 2
-    %Tag = type i2
-    #define MAX_TAG 3
+    #define TAG_BITS 3
+    %Tag = type i3
+    #define MAX_TAG 7
+
+#if 0
+    #define INTEGER_BITSOF WORD_BITSOF-TAG_BITS
+    #if WORD_BITSOF == 32
+    %nil_integer = type i29
+    #elif WORD_BITSOF == 64
+    %nil_integer = type i61
+    #else
+    DIE!!!
+    #endif
+#endif
 
     ; For now, I sometimes change these values randomly to ensure the code
     ; is clean and not depending on particular bit patterns.  They should
     ; fit insize a %Tag type (or they'll be silently wrapped), but otherwise
     ; are arbitrary.
-    #define    SYMBOL_TAG  0
-    #define      CELL_TAG  1
-    #define EXCEPTION_TAG  2
-    #define PRIMITIVE_TAG  3
+#if 0
+    #define   INTEGER_TAG  0
+#endif
+    #define    SYMBOL_TAG  1
+    #define      CELL_TAG  2
+    #define EXCEPTION_TAG  3
+    #define PRIMITIVE_TAG  4
 
     ; We define Nil as the null symbol (or at least not as the null CELL,
     ; which is an obvious choice as nil is the empty list) instead of the
@@ -80,6 +97,7 @@
     declare NILCC %Exp  @SetTag(%Exp %exp, %Tag %tag)
     declare NILCC i1    @TagIsClear(%Exp %exp)
     declare NILCC %Word @ShiftOutTag(%Exp %exp)
+    declare NILCC %Word @SignedShiftOutTag(%Exp %exp)
     declare NILCC %Exp  @ShiftInTag(%Word %word)
 
 ; Conversions
@@ -99,6 +117,12 @@
     ; Exception
     declare NILCC %Exp  @Exception2Exp(%Word %code)
     declare NILCC %Word @Exp2Exception(%Exp  %exp)
+
+#if 0
+    ; Integer
+    declare NILCC %Exp  @nil_integer2Exp(%nil_integer %integer)
+    declare NILCC %nil_integer @Exp2nil_integer(%Exp  %exp)
+#endif
 
 ; The "seven primitive operators" of Paul Graham's paper, plus
 ; internal forms
@@ -127,6 +151,10 @@
     declare NILCC i1 @IsPrimitive(%Exp %exp)
     declare NILCC i1 @IsException(%Exp %exp)
     declare NILCC i1 @NotException(%Exp %exp)
+#if 0
+    declare NILCC i1 @IsInteger(%Exp %exp)
+    declare NILCC i1 @NotInteger(%Exp %exp)
+#endif
     declare NILCC i1 @IsNil(%Exp %exp)
     declare NILCC i1 @NotNil(%Exp %exp)
 

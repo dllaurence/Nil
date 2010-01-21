@@ -42,7 +42,10 @@ define NILCC %ParseExp
 
         %c_int ASCII_LPAREN,   label %PassThrough
         %c_int ASCII_RPAREN,   label %PassThrough
-        %c_int NIL_SYMBOL,     label %ReturnSymbol
+        %c_int NIL_SYMBOL,     label %ReturnComposite
+#if 0
+        %c_int NIL_INTEGER,    label %ReturnComposite
+#endif
     ]
 
 CantHappen:
@@ -57,7 +60,7 @@ PassThrough:
     %parseExp = insertvalue %ParseExp %sameType, %Exp %valueExp, 1
     ret %ParseExp %parseExp
 
-ReturnSymbol:
+ReturnComposite:
     %lexemeWord = extractvalue %Token %token, 1
     %lexeme = inttoptr %Word %lexemeWord to %c_char*
     #ifndef NDEBUG
@@ -69,12 +72,39 @@ ReturnSymbol:
     ; Could assert that it's aligned as well.
     #endif
 
+    switch %c_int %tokenType, label %CompositeCantHappen [
+
+        %c_int NIL_SYMBOL,     label %ReturnSymbol
+#if 0
+        %c_int NIL_INTEGER,    label %ReturnInteger
+#endif
+    ]
+
+CompositeCantHappen:
+    cant_happen()
+    br label %CompositeCantHappen
+
+ReturnSymbol:
     ; Get the corresponding nil_symbol
     %symbol = call NILCC %Exp @NewSymbol(%c_char* %lexeme)
     %symbolExp = insertvalue %ParseExp {%c_int NIL_SYMBOL, %Exp undef},
                                           %Exp %symbol, 1
 
     ret %ParseExp %symbolExp
+
+#if 0
+ReturnInteger:
+    ; Get the corresponding Integer
+    %long = call %c_long @strtol(%c_char* %lexeme, %c_char** null, %c_int 10)
+
+    ; Basically a dirty hack conversion.  What is the right way?
+    %integer = trunc %c_long %long to %nil_integer
+
+    %integerExp = call NILCC %Exp @nil_integer2Exp(%nil_integer %integer)
+    %integerPExp = insertvalue %ParseExp {%c_int NIL_INTEGER, %Exp undef},
+                                            %Exp %integerExp, 1
+    ret %ParseExp %integerPExp
+#endif
 }
 
 ;**********************************************************************
@@ -179,6 +209,9 @@ GetParseExp:
         %c_int ASCII_RPAREN,   label %EndList
 
         %c_int NIL_EXCEPTION,  label %ReturnParseExp
+#if 0
+        %c_int NIL_INTEGER,    label %ReturnParseExp
+#endif
     ]
 
 Newline:
@@ -193,8 +226,11 @@ CantHappen:
 
 ReturnParseExp:
     %retParseExp = phi %ParseExp [%parseExp, %GetParseExp],
-                           [%parseExp, %GetParseExp],
-                           [%listParseExp, %BeginList]
+                            [%parseExp, %GetParseExp],
+#if 0
+                            [%parseExp, %GetParseExp],
+#endif
+                            [%listParseExp, %BeginList]
     ret %ParseExp %retParseExp
 
 EndList:
