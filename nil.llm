@@ -90,17 +90,18 @@ define NILCC %Exp
     %quitCDR = call NILCC %Exp @nil_cons(%Exp %quitPrim, %Exp NIL_VALUE)
     %quitAssoc = call NILCC %Exp @nil_cons(%Exp %quitSym,
                                            %Exp %quitCDR)
-    %assocList1 = call NILCC %Exp @nil_cons(%Exp %quitAssoc,
-                                            %Exp NIL_VALUE)
+    %assocList = call NILCC %Exp @nil_cons(%Exp %quitAssoc,
+                                           %Exp NIL_VALUE)
 
-#if 0
+    %env = call NILCC %Exp @nil_cons(%Exp %assocList, %Exp NIL_VALUE)
+#if 1
 ; Debugging code to show the binding list on startup
 call %c_int @putchar(%c_int ASCII_NEWLINE)
-call NILCC void @PrintExp(%Exp %assocList1)
+call NILCC void @PrintExp(%Exp %env)
 call %c_int @putchar(%c_int ASCII_NEWLINE)
 #endif
 
-    ret %Exp %assocList1
+    ret %Exp %env
 }
 
 ;**********************************************************************
@@ -193,27 +194,24 @@ NotFound:
 ;
 ;**********************************************************************
 
-    #define UNKNOWNSYMBOLARRAY_LEN 16
-    %UnknownSymbolType = type [UNKNOWNSYMBOLARRAY_LEN x %c_char]
+    %UnknownSymbolType = type [16 x %c_char]
     @unknownSymbolArray = internal constant %UnknownSymbolType
         c"unknown symbol \00"
 
 define NILCC %Exp
 @EnvLookup(%Exp %exp, %Exp %env)
 {
-    ; FIXME: change from using assoc lists to using environments
-    ; (lists of assoc lists)
-    %binding = call NILCC %Exp @nil_assoc(%Exp %exp, %Exp %env)
+    %cellp = call NILCC i1 @IsCell(%Exp %env)
+    br i1 %cellp, label %IsCell, label %NotCell
 
-        #ifndef NDEBUG
-        ; When used internally, should be impossible for assoc
-        ; to throw an exception
-        %notException = call NILCC i1 @NotException(%Exp %binding)
-        assert(%notException)
-        #endif
+NotCell:
+    %nilp = call NILCC i1 @IsNil(%Exp %env)
+    br i1 %nilp, label %UnknownSymbol, label %NotNil
 
-    %found = call NILCC i1 @NotNil(%Exp %binding)
-    br i1 %found, label %FoundSymbol, label %UnknownSymbol
+NotNil:
+    ; This can't happen if the nil code is correct
+    cant_happen()
+    br label %NotNil
 
 UnknownSymbol:
     %unknownSymbolPtr = getelementptr
@@ -223,6 +221,26 @@ UnknownSymbol:
     call %c_int @putchar(%c_int ASCII_NEWLINE)
     %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_UNKNOWN_SYMBOL)
     ret %Exp %xpn
+
+IsCell:
+    %context = call NILCC %Exp @nil_car(%Exp %env)
+    %binding = call NILCC %Exp @nil_assoc(%Exp %exp, %Exp %context)
+
+        #ifndef NDEBUG
+        ; When used internally, should be impossible for assoc
+        ; to throw an exception
+        %notException = call NILCC i1 @NotException(%Exp %binding)
+        assert(%notException)
+        #endif
+
+    %found = call NILCC i1 @NotNil(%Exp %binding)
+    br i1 %found, label %FoundSymbol, label %NotFound
+
+NotFound:
+    ; Recurse and check next context
+    %outerEnv = call NILCC %Exp @nil_cdr(%Exp %env)
+    %outerBinding = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %outerEnv)
+    ret %Exp %outerBinding
 
 FoundSymbol:
     %cdr = call NILCC %Exp @nil_cdr(%Exp %binding)
@@ -375,10 +393,10 @@ Primitive:
 ;
 ;**********************************************************************
 
-#define DOTPAIRARRAY_LEN 36
-%DotPairType = type [DOTPAIRARRAY_LEN x %c_char]
-@dotPairArray = internal constant %DotPairType
-    c"Error: can't evaluate a dotted pair\00"
+    #define DOTPAIRARRAY_LEN 36
+    %DotPairType = type [DOTPAIRARRAY_LEN x %c_char]
+    @dotPairArray = internal constant %DotPairType
+        c"Error: can't evaluate a dotted pair\00"
 
 define NILCC %Exp
 @EvalList(%Exp %exp, %Exp %env)

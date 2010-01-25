@@ -747,6 +747,33 @@ define NILCC i1
 }
 
 ;**********************************************************************
+; IsList
+;
+; Returns true iff the expression is a cell or nil.
+;
+; FIXME: Are there places where having this test earlier would have
+; simplified the code?
+;
+;**********************************************************************
+
+define NILCC i1
+@IsList(%Exp %exp)
+{
+    %cellp = call NILCC i1 @IsCell(%Exp %exp)
+    br i1 %cellp, label %True, label %NotCell
+
+NotCell:
+    %isNill = call NILCC i1 @IsNil(%Exp %exp)
+    br i1 %isNill, label %True, label %False
+
+False:
+    ret i1 false
+
+True:
+    ret i1 true
+}
+
+;**********************************************************************
 ; IsPrimitive
 ;
 ; Returns true iff the expression is a primitive.
@@ -958,6 +985,51 @@ define NILCC %Exp
 }
 
 ;**********************************************************************
+; ExceptionMsg
+;
+;**********************************************************************
+
+    %UnknownSymbolType = type [15 x %c_char]
+    @unknownSymbolArray = internal constant %UnknownSymbolType
+        c"unknown symbol\00"
+
+    %DotPairType = type [29 x %c_char]
+    @dotPairArray = internal constant %DotPairType
+        c"can't evaluate a dotted pair\00"
+
+    %CannotApplyType = type [22 x %c_char]
+    @cannotApplyArray = internal constant %CannotApplyType
+        c"cannot apply operator\00"
+
+    %ExpectedListType = type [14 x %c_char]
+    @expectedListArray = internal constant %ExpectedListType
+        c"expected list\00"
+
+    #define EXCEPTIONMSGS_NUM 4
+    %ExceptionMsgsType = type [EXCEPTIONMSGS_NUM x %c_char*]
+    @exceptionMsgs = internal constant %ExceptionMsgsType [
+        %c_char* getelementptr ( %UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0 ),
+        %c_char* getelementptr ( %DotPairType* @dotPairArray, i64 0, i64 0 ),
+        %c_char* getelementptr ( %CannotApplyType* @cannotApplyArray, i64 0, i64 0 ),
+        %c_char* getelementptr ( %ExpectedListType* @expectedListArray, i64 0, i64 0 )
+    ]
+
+define NILCC %c_char*
+@ExceptionMsg(%Word %code)
+{
+        #ifndef NDEBUG
+        %nonNeg = icmp sge %Word %code, 0
+        assert(%nonNeg)
+        %smallEnough = icmp slt %Word %code, EXCEPTIONMSGS_NUM
+        assert(%smallEnough)
+        #endif
+
+    %msgPtr = getelementptr %ExceptionMsgsType* @exceptionMsgs, i64 0, %Word %code
+    %msg = load %c_char** %msgPtr
+    ret %c_char* %msg
+}
+
+;**********************************************************************
 ; PrintExp
 ;
 ;**********************************************************************
@@ -994,9 +1066,9 @@ IsCell:
         c"#primitive: %s#\00"
 %primitiveFormatType = type [PRIMITIVEFORMAT_LEN x %c_char]
 
-#define EXCEPTIONFORMAT_LEN 16
+#define EXCEPTIONFORMAT_LEN 20
 @exceptionFormat = internal constant [EXCEPTIONFORMAT_LEN x %c_char]
-        c"#exception:%ld#\00"
+        c"#exception %ld: %s#\00"
 %exceptionFormatType = type [EXCEPTIONFORMAT_LEN x %c_char]
 
 define NILCC void
@@ -1047,12 +1119,13 @@ IsPrimitive:
 
 IsException:
     %code = call NILCC %Word @Exp2Exception(%Exp %exp)
+    %msg = call NILCC %c_char* @ExceptionMsg(%Word %code)
 
-    %exceptionString = getelementptr %exceptionFormatType*
+    %exceptionFormatStr = getelementptr %exceptionFormatType*
                                  @exceptionFormat, i64 0, i64 0
     call ccc %c_int (%c_char*, ...)*
-                     @printf(%c_char* %exceptionString,
-                             %Word %code)
+                     @printf(%c_char* %exceptionFormatStr,
+                             %Word %code, %c_char* %msg)
     ret void
 
 #if 0
