@@ -10,6 +10,9 @@ LPPFLAGS = # -D NDEBUG
 LLOPTFLAGS = -O3
 LLCFLAGS = -O3
 
+# FIXME: This means we're using the system linker and not getting
+# link-time optimization.  Not fixed yet because my first try broke
+# code.
 %.s : %.optbc
 	llc $(LLCFLAGS) -f $< -o $@
 
@@ -48,5 +51,5 @@ c_defs.llh : c_defs
 	./c_defs > c_defs.llh
 
 clean :
-	rm -f nil c_defs c_defs.llh *.bc *.optbc *.s *.o *.ll
+	rm -f nil c_defs c_defs.llh *.bc *.optbc *.gbc *.s *.o *.ll
 

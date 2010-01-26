@@ -58,6 +58,16 @@
 
     @selfQuote = internal global i1 0
 
+#if 0
+    ; Initialize this value or there will be trouble
+    @tPtr = internal global %Exp NIL_VALUE
+
+    %TArrayType = type [2 x %c_char]
+    @tArray = internal constant %TArrayType c"t\00"
+    @tStrPtr = internal constant %c_char* 
+                  getelementptr (%TArrayType* @tArray, i64 0, i64 0)
+#endif
+
 ;**********************************************************************
 ; nil_quit
 ;
@@ -297,6 +307,11 @@ define NILCC %Exp
     %env1 = call NILCC %Exp @Cons(%Exp %commandContext, %Exp NIL_VALUE)
 
     ; Language primitives
+    #if 0
+    ; t
+    %t = call NILCC %Exp @NewSymbol(%c_char* <tstr>)
+    #endif
+
     ; quote
     %langContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quoteStrPtr,
                     %Exp(%Exp)* @nil_quote, %Word 1, %Exp NIL_VALUE, i1 1)
