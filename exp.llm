@@ -667,13 +667,12 @@ define NILCC i1
 
 ; #4 -- car
 define NILCC %Exp
-@nil_car(%Exp %exp)
+@Car(%Exp %exp)
 {
-        ;FIXME: report errors instead of dying.  Not
-        ; within #ifndef NDEBUG because until fixed
-        ; this *will* happen and is not acceptable.
+        #ifndef NDEBUG
         %cellp = call NILCC i1 @IsCell(%Exp %exp)
         assert(%cellp)
+        #endif
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %carPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 0
@@ -938,7 +937,8 @@ define NILCC %nil_cell*
 ;**********************************************************************
 
 define NILCC %Exp
-@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm)
+@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm,
+              i1 %magic)
 {
         #ifndef NDEBUG
         ; Better not be a null function pointer
@@ -978,6 +978,10 @@ define NILCC %Exp
     ; constant.
     %printFormField = getelementptr %nil_primitive* %newPrim, i64 0, i32 2
     store %c_char* %printForm, %c_char** %printFormField
+
+    ; Set the magic bit
+    %magicField = getelementptr %nil_primitive* %newPrim, i64 0, i32 3
+    store i1 %magic, i1* %magicField
 
     %exp = call NILCC %Exp @nil_primitive2Exp(%nil_primitive* %newPrim)
 
@@ -1091,7 +1095,7 @@ IsAtom:
 
 IsCell:
     call ccc %c_int @putchar(%c_int ASCII_LPAREN)
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %exp)
     call NILCC void @PrintExp(%Exp %car)
     %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
     call NILCC void @PrintCDR(%Exp %cdr)
@@ -1213,7 +1217,7 @@ IsAtom:
 IsCell:
     ; Another cell, so we need a separator
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %exp)
     call NILCC void @PrintExp(%Exp %car)
     %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
     call NILCC void @PrintCDR(%Exp %cdr)

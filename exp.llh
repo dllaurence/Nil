@@ -40,8 +40,10 @@
     ; Internal representation--a primitive is a native function over
     ; expressions.  The word is the required number of arguments so
     ; the interpreter can do some sanity checking, and the string is
-    ; a printing format
-    %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*}
+    ; a printing format.  The bit flag is whether the primitive is magic
+    ; (i.e. handles its own argument evaluation like a macro)
+;    %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*}
+    %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*, i1}
 
     ; For nil_integer, see below because it depends on the number of
     ; tag bits
@@ -139,7 +141,7 @@
     declare NILCC i1 @NotEq(%Exp %lhs, %Exp %rhs)
 
     ; #4 -- car
-    declare NILCC %Exp @nil_car(%Exp %exp)
+    declare NILCC %Exp @Car(%Exp %exp)
 
     ; #5 -- cdr
     declare NILCC %Exp @nil_cdr(%Exp %exp)
@@ -169,7 +171,7 @@
     declare NILCC %Exp       @NewSymbol(%c_char* %name)
     declare NILCC %nil_cell* @NewCell()
     declare NILCC %Exp       @NewPrimitive(%Exp (%Exp)*, %Word %argCount,
-                                           %c_char* %printForm)
+                                           %c_char* %printForm, i1 %magic)
 
     ; Lists
     declare NILCC %Word @Len(%Exp %list)

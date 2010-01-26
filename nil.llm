@@ -85,7 +85,42 @@ define NILCC %Exp
 define NILCC %Exp
 @nil_quote(%Exp %exp)
 {
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %exp)
+    ret %Exp %car
+}
+
+;**********************************************************************
+; nil_car
+;
+;**********************************************************************
+
+    %CARArrayType = type [4 x %c_char]
+    @carArray = internal constant %CARArrayType c"car\00"
+    @carStrPtr = internal constant %c_char*
+                   getelementptr (%CARArrayType* @carArray, i64 0, i64 0)
+
+    %CARExpectedListType = type [19 x %c_char]
+    @carExpectedListArray = internal constant %CARExpectedListType
+        c"car: expected list\00"
+
+define NILCC %Exp
+@nil_car(%Exp %exp)
+{
+    %arg = call NILCC %Exp @Car(%Exp %exp)
+
+    %isCell = call NILCC i1 @IsCell(%Exp %arg)
+    br i1 %isCell, label %HaveCell, label %NoCell
+
+NoCell:
+    ; This is an error, throw an exception
+    %carExpectedListPtr = getelementptr %CARExpectedListType*
+        @carExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %carExpectedListPtr)
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_EXPECTED_LIST)
+    ret %Exp %xpn
+
+HaveCell:
+    %car = call NILCC %Exp @Car(%Exp %arg)
     ret %Exp %car
 }
 
@@ -110,18 +145,23 @@ define NILCC %Exp
 }
 
 ;**********************************************************************
-; AddSymbolBinding
-;
-; Add a symbol binding.
+; AddPrimitiveBinding
 ;
 ;**********************************************************************
 
 define NILCC %Exp
-@AddSymbolBinding(%c_char** %namePtr, %Exp (%Exp)* %fn, %Word %nArgs, %Exp %context)
+@AddPrimitiveBinding
+    (
+    %c_char** %namePtr,
+    %Exp (%Exp)* %fn,
+    %Word %nArgs,
+    %Exp %context,
+    i1 %magic
+    )
 {
     %name = load %c_char** %namePtr
-    %prim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* %fn,
-                                          %Word %nArgs, %c_char* %name)
+    %prim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* %fn, %Word %nArgs,
+                                          %c_char* %name, i1 %magic)
     %newContext = call NILCC %Exp @AddBinding(%c_char** %namePtr,
                                               %Exp %prim,
                                               %Exp %context)
@@ -135,30 +175,25 @@ define NILCC %Exp
 ;
 ;**********************************************************************
 
-    %CARArrayType = type [4 x %c_char]
-    @carArray = internal constant %CARArrayType c"car\00"
-    @carStrPtr = internal constant %c_char*
-                 getelementptr (%CARArrayType* @carArray, i64 0, i64 0)
-
 define NILCC %Exp
 @GetEnv()
 {
     ; Command primitives--these are conceptually ways to control the
     ; interpreter rather than language elements per se, though in
     ; reality there is no difference
-    %commandContext = call NILCC %Exp @AddSymbolBinding(%c_char** @quitStrPtr,
-                      %Exp(%Exp)* @nil_quit, %Word 0, %Exp NIL_VALUE)
+    %commandContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quitStrPtr,
+                      %Exp(%Exp)* @nil_quit, %Word 0, %Exp NIL_VALUE, i1 1)
 
     %env1 = call NILCC %Exp @nil_cons(%Exp %commandContext, %Exp NIL_VALUE)
 
     ; Language primitives
     ; quote
-    %langContext1 = call NILCC %Exp @AddSymbolBinding(%c_char** @quoteStrPtr,
-                    %Exp(%Exp)* @nil_quote, %Word 1, %Exp NIL_VALUE)
+    %langContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quoteStrPtr,
+                    %Exp(%Exp)* @nil_quote, %Word 1, %Exp NIL_VALUE, i1 1)
 
     ; car
-    %langContext2 = call NILCC %Exp @AddSymbolBinding(%c_char** @carStrPtr,
-                    %Exp(%Exp)* @nil_car, %Word 1, %Exp %langContext1)
+    %langContext2 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @carStrPtr,
+                    %Exp(%Exp)* @nil_car, %Word 1, %Exp %langContext1, i1 0)
 
     %env = call NILCC %Exp @nil_cons(%Exp %langContext2, %Exp %env1)
 
@@ -185,13 +220,11 @@ call %c_int @putchar(%c_int ASCII_NEWLINE)
 ;
 ;**********************************************************************
 
-    #define EXPECTEDLISTARRAY_LEN 21
-    %ExpectedListType = type [EXPECTEDLISTARRAY_LEN x %c_char]
-    @expectedListArray = internal constant %ExpectedListType
+    %AssocExpectedListType = type [21 x %c_char]
+    @assocExpectedListArray = internal constant %AssocExpectedListType
         c"assoc: expected list\00"
 
-    #define EXPECTEDBINDINGARRAY_LEN 24
-    %ExpectedBindingType = type [EXPECTEDBINDINGARRAY_LEN x %c_char]
+    %ExpectedBindingType = type [24 x %c_char]
     @expectedBindingArray = internal constant %ExpectedBindingType
         c"assoc: expected binding\00"
 
@@ -212,9 +245,9 @@ HaveNil:
 
 HaveAtom:
     ; This is an error, throw an exception
-    %expectedListPtr = getelementptr %ExpectedListType*
-        @expectedListArray, i64 0, i64 0
-    call %c_int @puts(%c_char* %expectedListPtr)
+    %assocExpectedListPtr = getelementptr %AssocExpectedListType*
+        @assocExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %assocExpectedListPtr)
     br label %Exception
 
 Exception:
@@ -222,7 +255,7 @@ Exception:
     ret %Exp %xpn
 
 HaveList:
-    %firstBinding = call NILCC %Exp @nil_car(%Exp %assocList)
+    %firstBinding = call NILCC %Exp @Car(%Exp %assocList)
 
     ; Is this really a binding?  It needs to be a cell, but
     ; can be arbitrary otherwise
@@ -239,7 +272,7 @@ NotBinding:
 
 HaveBinding:
     ; Does the first entry have the key?
-    %thisKey = call NILCC %Exp @nil_car(%Exp %firstBinding)
+    %thisKey = call NILCC %Exp @Car(%Exp %firstBinding)
     %notFound = call NILCC i1 @NotEq(%Exp %key, %Exp %thisKey)
     br i1 %notFound, label %NotFound, label %Found
 
@@ -291,7 +324,7 @@ UnknownSymbol:
     ret %Exp %xpn
 
 IsCell:
-    %context = call NILCC %Exp @nil_car(%Exp %env)
+    %context = call NILCC %Exp @Car(%Exp %env)
     %binding = call NILCC %Exp @nil_assoc(%Exp %exp, %Exp %context)
 
         #ifndef NDEBUG
@@ -324,7 +357,7 @@ FoundSymbol:
         assert(%isNil)
         #endif
 
-    %cadr = call NILCC %Exp @nil_car(%Exp %cdr)
+    %cadr = call NILCC %Exp @Car(%Exp %cdr)
     ret %Exp %cadr
 }
 
@@ -411,7 +444,7 @@ Initial:
         assert(%isCell)
         #endif
 
-    %car = call NILCC %Exp @nil_car(%Exp %combination)
+    %car = call NILCC %Exp @Car(%Exp %combination)
 
     ; For now, always evaluate the function.  This may have to
     ; change when we get to implementing user functions and
@@ -470,9 +503,21 @@ BadArgNum:
     ret %Exp %badArgsXpn
 
 GoodArgNum:
-    ; We don't evaluate the args before calling--*all* primitives
-    ; are magic
-    %result = call NILCC %Exp %primFn(%Exp %cdr)
+    %magicPtr = getelementptr %nil_primitive* %prim, i64 0, i32 3
+    %magic = load i1* %magicPtr
+    br i1 %magic, label %IsMagic, label %NotMagic
+
+NotMagic:
+    %evalArgs = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
+    %argException = call NILCC i1 @IsException(%Exp %evalArgs)
+    br i1 %argException, label %ArgException, label %IsMagic
+
+ArgException:
+    ret %Exp %evalArgs
+
+IsMagic:
+    %args = phi %Exp [%evalArgs, %NotMagic], [%cdr, %GoodArgNum]
+    %result = call NILCC %Exp %primFn(%Exp %args)
     ret %Exp %result
 }
 
@@ -512,7 +557,7 @@ NotNil:
     ret %Exp %errorExp
 
 Cell:
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %exp)
     %first = call NILCC %Exp @Eval(%Exp %car, %Exp %env)
     %firstOK = call NILCC i1 @NotException(%Exp %first)
     br i1 %firstOK, label %DoCDR, label %Exception

@@ -236,7 +236,7 @@ Loop:
     BeginLoop:
         ; if ( car(thisCell) == searchString)
         ; FIXME: should use the LLVM 2.6 inbounds keyword
-        %car = call NILCC %Exp @nil_car(%Exp %thisCell)
+        %car = call NILCC %Exp @Car(%Exp %thisCell)
 
         ; Do the compare--note that we *can't* do this with anything like
         ; eq, because we already need uniqueness to make the
@@ -291,7 +291,7 @@ IsNil:
 NotNil:
     ; if ( car(list) == searchString)
     ; FIXME: should use the LLVM 2.6 inbounds keyword
-    %car = call NILCC %Exp @nil_car(%Exp %list)
+    %car = call NILCC %Exp @Car(%Exp %list)
 
     ; Do the compare--note that we *can't* do this with anything like
     ; eq, because this is the direct string compare that makes the
