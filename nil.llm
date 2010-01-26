@@ -54,6 +54,10 @@
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
 
+; Evaluator parameters
+
+    @selfQuote = internal global i1 0
+
 ;**********************************************************************
 ; nil_quit
 ;
@@ -69,6 +73,44 @@ define NILCC %Exp
 {
     call ccc void @exit(%c_int 0)
     unreachable
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_selfquote
+;
+;**********************************************************************
+
+    %SelfQuoteArrayType = type [10 x %c_char]
+    @selfQuoteArray = internal constant %SelfQuoteArrayType c"selfquote\00"
+    @selfQuoteStrPtr = internal constant %c_char* 
+                  getelementptr (%SelfQuoteArrayType* @selfQuoteArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_selfquote(%Exp %exp)
+{
+    store i1 1, i1* @selfQuote
+
+    ; Useless return value
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_noselfquote
+;
+;**********************************************************************
+
+    %NoSelfQuoteArrayType = type [12 x %c_char]
+    @noSelfQuoteArray = internal constant %NoSelfQuoteArrayType c"noselfquote\00"
+    @noSelfQuoteStrPtr = internal constant %c_char* 
+        getelementptr (%NoSelfQuoteArrayType* @noSelfQuoteArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_noselfquote(%Exp %exp)
+{
+    store i1 0, i1* @selfQuote
+
+    ; Useless return value
     ret %Exp NIL_VALUE
 }
 
@@ -237,8 +279,20 @@ define NILCC %Exp
     ; Command primitives--these are conceptually ways to control the
     ; interpreter rather than language elements per se, though in
     ; reality there is no difference
-    %commandContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quitStrPtr,
+
+    ; quit
+    %commandContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quitStrPtr,
                       %Exp(%Exp)* @nil_quit, %Word 0, %Exp NIL_VALUE, i1 1)
+
+    ; selfquote
+    %commandContext2 = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @selfQuoteStrPtr, %Exp(%Exp)* @nil_selfquote,
+        %Word 0, %Exp %commandContext1, i1 1)
+
+    ; noselfquote
+    %commandContext = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @noSelfQuoteStrPtr, %Exp(%Exp)* @nil_noselfquote,
+        %Word 0, %Exp %commandContext2, i1 1)
 
     %env1 = call NILCC %Exp @Cons(%Exp %commandContext, %Exp NIL_VALUE)
 
@@ -379,6 +433,13 @@ NotNil:
     br label %NotNil
 
 UnknownSymbol:
+    %selfquote = load i1* @selfQuote
+    br i1 %selfquote, label %SelfQuote, label %ThrowException
+
+SelfQuote:
+    ret %Exp %exp
+
+ThrowException:
     %unknownSymbolPtr = getelementptr
         %UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0
     call %c_int @putstring(%c_char* %unknownSymbolPtr)
