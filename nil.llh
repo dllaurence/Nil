@@ -62,6 +62,7 @@
     #define NIL_EVAL_DOTPAIR      1
     #define NIL_CANNOT_APPLY      2
     #define NIL_EXPECTED_LIST     3
+    #define NIL_BAD_ARG_NUM       4
 
     ; Evaluator Types
 

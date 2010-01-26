@@ -127,6 +127,9 @@
 ; The "seven primitive operators" of Paul Graham's paper, plus
 ; internal forms
 
+    ; #1 -- quote
+    ; in nil.llm for now
+
     ; #2 -- atom
     declare NILCC i1 @IsAtom(%Exp %exp) ; Internal form
 
@@ -161,11 +164,15 @@
 
 ; Other symbol manipulations
 
+    ; Symbol creation
     ; The interfaces are somewhat inconsistent, but convenient
     declare NILCC %Exp       @NewSymbol(%c_char* %name)
     declare NILCC %nil_cell* @NewCell()
     declare NILCC %Exp       @NewPrimitive(%Exp (%Exp)*, %Word %argCount,
                                            %c_char* %printForm)
+
+    ; Lists
+    declare NILCC %Word @Len(%Exp %list)
 
 ; Exceptions
 

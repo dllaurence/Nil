@@ -59,17 +59,73 @@
 ;
 ;**********************************************************************
 
-    #define QUITARRAY_LEN 5
-    %QuitArrayType = type [QUITARRAY_LEN x %c_char]
+    %QuitArrayType = type [5 x %c_char]
     @quitArray = internal constant %QuitArrayType c"quit\00"
+    @quitStrPtr = internal constant %c_char* 
+                  getelementptr (%QuitArrayType* @quitArray, i64 0, i64 0)
 
 define NILCC %Exp
 @nil_quit(%Exp %exp)
 {
-    ; Ignore inputs
     call ccc void @exit(%c_int 0)
     unreachable
     ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_quote
+;
+;**********************************************************************
+
+    %QuoteArrayType = type [6 x %c_char]
+    @quoteArray = internal constant %QuoteArrayType c"quote\00"
+    @quoteStrPtr = internal constant %c_char*
+                   getelementptr (%QuoteArrayType* @quoteArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_quote(%Exp %exp)
+{
+    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    ret %Exp %car
+}
+
+;**********************************************************************
+; AddBinding
+;
+; Add a binding to a context.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@AddBinding(%c_char** %namePtr, %Exp %value, %Exp %context)
+{
+    %name = load %c_char** %namePtr
+    %sym = call NILCC %Exp @NewSymbol(%c_char* %name)
+    %cdr = call NILCC %Exp @nil_cons(%Exp %value, %Exp NIL_VALUE)
+    %binding = call NILCC %Exp @nil_cons(%Exp %sym, %Exp %cdr)
+    %newContext = call NILCC %Exp @nil_cons(%Exp %binding,
+                                           %Exp %context)
+
+    ret %Exp %newContext
+}
+
+;**********************************************************************
+; AddSymbolBinding
+;
+; Add a symbol binding.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@AddSymbolBinding(%c_char** %namePtr, %Exp (%Exp)* %fn, %Word %nArgs, %Exp %context)
+{
+    %name = load %c_char** %namePtr
+    %prim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* %fn,
+                                          %Word %nArgs, %c_char* %name)
+    %newContext = call NILCC %Exp @AddBinding(%c_char** %namePtr,
+                                              %Exp %prim,
+                                              %Exp %context)
+    ret %Exp %newContext
 }
 
 ;**********************************************************************
@@ -79,21 +135,33 @@ define NILCC %Exp
 ;
 ;**********************************************************************
 
+    %CARArrayType = type [4 x %c_char]
+    @carArray = internal constant %CARArrayType c"car\00"
+    @carStrPtr = internal constant %c_char*
+                 getelementptr (%CARArrayType* @carArray, i64 0, i64 0)
+
 define NILCC %Exp
 @GetEnv()
 {
-    %quitStr = getelementptr %QuitArrayType* @quitArray, i64 0, i64 0
-    %quitPrim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* @nil_quit,
-                                          %Word -1, %c_char* %quitStr)
-    %quitSym = call NILCC %Exp @NewSymbol(%c_char* %quitStr)
-    ; FIXME: This is a dotted pair!!!
-    %quitCDR = call NILCC %Exp @nil_cons(%Exp %quitPrim, %Exp NIL_VALUE)
-    %quitAssoc = call NILCC %Exp @nil_cons(%Exp %quitSym,
-                                           %Exp %quitCDR)
-    %assocList = call NILCC %Exp @nil_cons(%Exp %quitAssoc,
-                                           %Exp NIL_VALUE)
+    ; Command primitives--these are conceptually ways to control the
+    ; interpreter rather than language elements per se, though in
+    ; reality there is no difference
+    %commandContext = call NILCC %Exp @AddSymbolBinding(%c_char** @quitStrPtr,
+                      %Exp(%Exp)* @nil_quit, %Word 0, %Exp NIL_VALUE)
 
-    %env = call NILCC %Exp @nil_cons(%Exp %assocList, %Exp NIL_VALUE)
+    %env1 = call NILCC %Exp @nil_cons(%Exp %commandContext, %Exp NIL_VALUE)
+
+    ; Language primitives
+    ; quote
+    %langContext1 = call NILCC %Exp @AddSymbolBinding(%c_char** @quoteStrPtr,
+                    %Exp(%Exp)* @nil_quote, %Word 1, %Exp NIL_VALUE)
+
+    ; car
+    %langContext2 = call NILCC %Exp @AddSymbolBinding(%c_char** @carStrPtr,
+                    %Exp(%Exp)* @nil_car, %Word 1, %Exp %langContext1)
+
+    %env = call NILCC %Exp @nil_cons(%Exp %langContext2, %Exp %env1)
+
 #if 1
 ; Debugging code to show the binding list on startup
 call %c_int @putchar(%c_int ASCII_NEWLINE)
@@ -324,10 +392,13 @@ call %c_int @putchar(%c_int ASCII_NEWLINE)
 ;
 ;**********************************************************************
 
-    #define CANNOTAPPLYARRAY_LEN 14
-    %CannotApplyType = type [CANNOTAPPLYARRAY_LEN x %c_char]
+    %CannotApplyType = type [14 x %c_char]
     @cannotApplyArray = internal constant %CannotApplyType
         c"cannot apply \00"
+
+    %BadArgNumType = type [32 x %c_char]
+    @badArgNumArray = internal constant %BadArgNumType
+        c"had %ld arguments, required %ld\00"
 
 define NILCC %Exp
 @Apply(%Exp %combination, %Exp %env)
@@ -381,7 +452,24 @@ Primitive:
     %primFnPtr = getelementptr %nil_primitive* %prim, i64 0, i32 0
     %primFn = load %Exp (%Exp)** %primFnPtr
 
+    %primArgNumPtr = getelementptr %nil_primitive* %prim, i64 0, i32 1
+    %primArgNum = load %Word* %primArgNumPtr
+
     %cdr = call NILCC %Exp @nil_cdr(%Exp %combination)
+    %argNum = call NILCC %Word @Len(%Exp %cdr)
+
+    %goodArgNum = icmp eq %Word %argNum, %primArgNum
+    br i1 %goodArgNum, label %GoodArgNum, label %BadArgNum
+
+BadArgNum:
+    %badArgNumStr = getelementptr %BadArgNumType* @badArgNumArray, i64 0, i64 0
+    call %c_int (%c_char*, ...)* @printf(%c_char* %badArgNumStr, %Word %argNum,
+                                         %Word %primArgNum)
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
+    %badArgsXpn = call NILCC %Exp @Exception2Exp(%Word NIL_BAD_ARG_NUM)
+    ret %Exp %badArgsXpn
+
+GoodArgNum:
     ; We don't evaluate the args before calling--*all* primitives
     ; are magic
     %result = call NILCC %Exp %primFn(%Exp %cdr)

@@ -985,6 +985,46 @@ define NILCC %Exp
 }
 
 ;**********************************************************************
+; LenImp
+;
+; Implementation for Len--written this way for tail recursion
+;
+;**********************************************************************
+
+define NILCC %Word
+@LenImp(%Exp %list, %Word %count)
+{
+    %isNil = call NILCC i1 @IsNil(%Exp %list)
+    br i1 %isNil, label %IsNil, label %NotNil
+
+IsNil:
+    ret %Word %count
+
+NotNil:
+        #ifndef NDEBUG
+        %isCell = call NILCC i1 @IsCell(%Exp %list)
+        assert(%isCell)
+        #endif
+
+    %rest = call NILCC %Exp @nil_cdr(%Exp %list)
+    %restCount = add %Word %count, 1
+    %len = call NILCC %Word @LenImp(%Exp %rest, %Word %restCount)
+    ret %Word %len
+}
+
+;**********************************************************************
+; Len
+;
+;**********************************************************************
+
+define NILCC %Word
+@Len(%Exp %list)
+{
+    %len = call NILCC %Word @LenImp(%Exp %list, %Word 0)
+    ret %Word %len
+}
+
+;**********************************************************************
 ; ExceptionMsg
 ;
 ;**********************************************************************
@@ -1005,13 +1045,18 @@ define NILCC %Exp
     @expectedListArray = internal constant %ExpectedListType
         c"expected list\00"
 
-    #define EXCEPTIONMSGS_NUM 4
+    %BadArgNumType = type [26 x %c_char]
+    @badArgNumArray = internal constant %BadArgNumType
+        c"mismatched argument count\00"
+
+    #define EXCEPTIONMSGS_NUM 5
     %ExceptionMsgsType = type [EXCEPTIONMSGS_NUM x %c_char*]
     @exceptionMsgs = internal constant %ExceptionMsgsType [
-        %c_char* getelementptr ( %UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0 ),
-        %c_char* getelementptr ( %DotPairType* @dotPairArray, i64 0, i64 0 ),
-        %c_char* getelementptr ( %CannotApplyType* @cannotApplyArray, i64 0, i64 0 ),
-        %c_char* getelementptr ( %ExpectedListType* @expectedListArray, i64 0, i64 0 )
+        %c_char* getelementptr (%UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0 ),
+        %c_char* getelementptr (%DotPairType* @dotPairArray, i64 0, i64 0 ),
+        %c_char* getelementptr (%CannotApplyType* @cannotApplyArray, i64 0, i64 0 ),
+        %c_char* getelementptr (%ExpectedListType* @expectedListArray, i64 0, i64 0 ),
+        %c_char* getelementptr (%BadArgNumType* @badArgNumArray, i64 0, i64 0)
     ]
 
 define NILCC %c_char*
