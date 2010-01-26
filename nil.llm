@@ -58,15 +58,18 @@
 
     @selfQuote = internal global i1 0
 
-#if 0
-    ; Initialize this value or there will be trouble
+
+    ; We're caching the value of t both for efficiency and so insane
+    ; redefinitions can't change the evaluator behavior.  Arguably
+    ; we should follow scheme and make this a magic value instead of
+    ; an ordinary symbol.
+    ; Initialize this value or there will be trouble!
     @tPtr = internal global %Exp NIL_VALUE
 
     %TArrayType = type [2 x %c_char]
     @tArray = internal constant %TArrayType c"t\00"
     @tStrPtr = internal constant %c_char* 
                   getelementptr (%TArrayType* @tArray, i64 0, i64 0)
-#endif
 
 ;**********************************************************************
 ; nil_quit
@@ -139,6 +142,60 @@ define NILCC %Exp
 {
     %car = call NILCC %Exp @Car(%Exp %exp)
     ret %Exp %car
+}
+
+;**********************************************************************
+; nil_atom
+;
+;**********************************************************************
+
+    %AtomArrayType = type [5 x %c_char]
+    @atomArray = internal constant %AtomArrayType c"atom\00"
+    @atomStrPtr = constant %c_char*
+                   getelementptr (%AtomArrayType* @atomArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_atom(%Exp %exp)
+{
+    %arg = call NILCC %Exp @Car(%Exp %exp)
+
+    %isAtom = call NILCC i1 @IsAtom(%Exp %arg)
+    br i1 %isAtom, label %True, label %False
+
+True:
+    %t = load %Exp* @tPtr
+    ret %Exp %t
+
+False:
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_eq
+;
+;**********************************************************************
+
+    %EqArrayType = type [3 x %c_char]
+    @eqArray = internal constant %EqArrayType c"eq\00"
+    @eqStrPtr = constant %c_char*
+                   getelementptr (%EqArrayType* @eqArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_eq(%Exp %argList)
+{
+    %lhs = call NILCC %Exp @Car(%Exp %argList)
+    %rest = call NILCC %Exp @Cdr(%Exp %argList)
+    %rhs = call NILCC %Exp @Car(%Exp %rest)
+
+    %isEq = call NILCC i1 @Eq(%Exp %lhs, %Exp %rhs)
+    br i1 %isEq, label %True, label %False
+
+True:
+    %t = load %Exp* @tPtr
+    ret %Exp %t
+
+False:
+    ret %Exp NIL_VALUE
 }
 
 ;**********************************************************************
@@ -307,26 +364,40 @@ define NILCC %Exp
     %env1 = call NILCC %Exp @Cons(%Exp %commandContext, %Exp NIL_VALUE)
 
     ; Language primitives
-    #if 0
     ; t
-    %t = call NILCC %Exp @NewSymbol(%c_char* <tstr>)
-    #endif
+    ; Unfortunately must get the symbol so we can create the binding;
+    ; if we do more of these there should be a 'AddSelfBinding' function
+    %tStr = load %c_char** @tStrPtr
+    %t = call NILCC %Exp @NewSymbol(%c_char* %tStr)
+    ; Cache the value of t for efficiency and so redefinitions by insane
+    ; programmers won't affect the evaluator code
+    store %Exp %t, %Exp* @tPtr
+    %langContext0 = call NILCC %Exp @AddBinding(%c_char** @tStrPtr,
+        %Exp %t, %Exp NIL_VALUE)
 
     ; quote
     %langContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quoteStrPtr,
-                    %Exp(%Exp)* @nil_quote, %Word 1, %Exp NIL_VALUE, i1 1)
+                    %Exp(%Exp)* @nil_quote, %Word 1, %Exp %langContext0, i1 1)
+
+    ; atom
+    %langContext2 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @atomStrPtr,
+                    %Exp(%Exp)* @nil_atom, %Word 1, %Exp %langContext1, i1 0)
+
+    ; eq
+    %langContext3 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @eqStrPtr,
+                    %Exp(%Exp)* @nil_eq, %Word 2, %Exp %langContext2, i1 0)
 
     ; car
-    %langContext2 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @carStrPtr,
-                    %Exp(%Exp)* @nil_car, %Word 1, %Exp %langContext1, i1 0)
+    %langContext4 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @carStrPtr,
+                    %Exp(%Exp)* @nil_car, %Word 1, %Exp %langContext3, i1 0)
 
     ; cdr
-    %langContext3 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @cdrStrPtr,
-                    %Exp(%Exp)* @nil_cdr, %Word 1, %Exp %langContext2, i1 0)
+    %langContext5 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @cdrStrPtr,
+                    %Exp(%Exp)* @nil_cdr, %Word 1, %Exp %langContext4, i1 0)
 
     ; cons
     %langContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @consStrPtr,
-                   %Exp(%Exp)* @nil_cons, %Word 2, %Exp %langContext3, i1 0)
+                   %Exp(%Exp)* @nil_cons, %Word 2, %Exp %langContext5, i1 0)
 
     %env = call NILCC %Exp @Cons(%Exp %langContext, %Exp %env1)
 
