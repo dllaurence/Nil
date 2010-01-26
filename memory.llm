@@ -162,7 +162,7 @@ call ccc %c_int @putstring(%c_char* %newStr)
     assert(%gotString)
     ; Check alignment.  Cons will actually do this again with str2Exp,
     ; but it seems better to have it here as nothing *forces* all calls
-    ; to NewCell() to go through nil_cons().
+    ; to NewCell() to go through Cons().
     ; This assumes c_char == i8.  Bite me.
     %aligned = call NILCC i1 @Aligned(%c_char* %newString)
     assert(%aligned)
@@ -190,7 +190,7 @@ define NILCC void
 
     %cdr = load %Exp* @pStringList
 
-    %newHead = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+    %newHead = call NILCC %Exp @Cons(%Exp %car, %Exp %cdr)
 
     ; Make it the new head
     store %Exp %newHead, %Exp* @pStringList
@@ -254,7 +254,7 @@ Loop:
 
         EndIf:
         ; thisCell = cdr(thisCell)
-        %cdr = call NILCC %Exp @nil_cdr(%Exp %thisCell)
+        %cdr = call NILCC %Exp @Cdr(%Exp %thisCell)
         store %Exp %cdr, %Exp* %pThisCell
         br label %Loop
 
@@ -309,7 +309,7 @@ StringsEqual:
 
 StringsNotEqual:
     ; FindString( cdr(list) )
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %list)
+    %cdr = call NILCC %Exp @Cdr(%Exp %list)
     %answer = tail call NILCC %c_char* @FindStringR(%Exp %cdr,
                                                     %c_char* %searchString)
     ret %c_char* %answer

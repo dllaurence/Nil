@@ -683,11 +683,12 @@ define NILCC %Exp
 
 ; #5 -- cdr
 define NILCC %Exp
-@nil_cdr(%Exp %exp)
+@Cdr(%Exp %exp)
 {
-        ;FIXME: report errors instead of dying
+        #ifndef NDEBUG
         %cellp = call NILCC i1 @IsCell(%Exp %exp)
         assert(%cellp)
+        #endif
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %cdrPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 1
@@ -698,7 +699,7 @@ define NILCC %Exp
 
 ; #6 -- cons
 define NILCC %Exp
-@nil_cons(%Exp %car, %Exp %cdr)
+@Cons(%Exp %car, %Exp %cdr)
 {
     %newCell = call NILCC %nil_cell* @NewCell()
 
@@ -910,7 +911,7 @@ define NILCC %Exp
 ; NewCell
 ;
 ; Returns a newly allocated cell.  Its fields must be set before use.
-; This really isn't intended to be called directly--use nil_cons.
+; This really isn't intended to be called directly--use Cons.
 ;
 ;**********************************************************************
 
@@ -1010,7 +1011,7 @@ NotNil:
         assert(%isCell)
         #endif
 
-    %rest = call NILCC %Exp @nil_cdr(%Exp %list)
+    %rest = call NILCC %Exp @Cdr(%Exp %list)
     %restCount = add %Word %count, 1
     %len = call NILCC %Word @LenImp(%Exp %rest, %Word %restCount)
     ret %Word %len
@@ -1097,7 +1098,7 @@ IsCell:
     call ccc %c_int @putchar(%c_int ASCII_LPAREN)
     %car = call NILCC %Exp @Car(%Exp %exp)
     call NILCC void @PrintExp(%Exp %car)
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
     call NILCC void @PrintCDR(%Exp %cdr)
     call ccc %c_int @putchar(%c_int ASCII_RPAREN)
     ret void
@@ -1219,7 +1220,7 @@ IsCell:
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
     %car = call NILCC %Exp @Car(%Exp %exp)
     call NILCC void @PrintExp(%Exp %car)
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
     call NILCC void @PrintCDR(%Exp %cdr)
     ret void
 }

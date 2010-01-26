@@ -125,6 +125,62 @@ HaveCell:
 }
 
 ;**********************************************************************
+; nil_cdr
+;
+;**********************************************************************
+
+    %CDRArrayType = type [4 x %c_char]
+    @cdrArray = internal constant %CDRArrayType c"cdr\00"
+    @cdrStrPtr = internal constant %c_char*
+                   getelementptr (%CDRArrayType* @cdrArray, i64 0, i64 0)
+
+    %CDRExpectedListType = type [19 x %c_char]
+    @cdrExpectedListArray = internal constant %CDRExpectedListType
+        c"cdr: expected list\00"
+
+define NILCC %Exp
+@nil_cdr(%Exp %exp)
+{
+    %arg = call NILCC %Exp @Car(%Exp %exp)
+
+    %isCell = call NILCC i1 @IsCell(%Exp %arg)
+    br i1 %isCell, label %HaveCell, label %NoCell
+
+NoCell:
+    ; This is an error, throw an exception
+    %cdrExpectedListPtr = getelementptr %CDRExpectedListType*
+        @cdrExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %cdrExpectedListPtr)
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_EXPECTED_LIST)
+    ret %Exp %xpn
+
+HaveCell:
+    %cdr = call NILCC %Exp @Cdr(%Exp %arg)
+    ret %Exp %cdr
+}
+
+;**********************************************************************
+; nil_cons
+;
+;**********************************************************************
+
+    %ConsArrayType = type [5 x %c_char]
+    @consArray = internal constant %ConsArrayType c"cons\00"
+    @consStrPtr = internal constant %c_char*
+                   getelementptr (%ConsArrayType* @consArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_cons(%Exp %exp)
+{
+    %car = call NILCC %Exp @Car(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
+    %cadr = call NILCC %Exp @Car(%Exp %cdr)
+
+    %cons = call NILCC %Exp @Cons(%Exp %car, %Exp %cadr)
+    ret %Exp %cons
+}
+
+;**********************************************************************
 ; AddBinding
 ;
 ; Add a binding to a context.
@@ -136,9 +192,9 @@ define NILCC %Exp
 {
     %name = load %c_char** %namePtr
     %sym = call NILCC %Exp @NewSymbol(%c_char* %name)
-    %cdr = call NILCC %Exp @nil_cons(%Exp %value, %Exp NIL_VALUE)
-    %binding = call NILCC %Exp @nil_cons(%Exp %sym, %Exp %cdr)
-    %newContext = call NILCC %Exp @nil_cons(%Exp %binding,
+    %cdr = call NILCC %Exp @Cons(%Exp %value, %Exp NIL_VALUE)
+    %binding = call NILCC %Exp @Cons(%Exp %sym, %Exp %cdr)
+    %newContext = call NILCC %Exp @Cons(%Exp %binding,
                                            %Exp %context)
 
     ret %Exp %newContext
@@ -184,7 +240,7 @@ define NILCC %Exp
     %commandContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quitStrPtr,
                       %Exp(%Exp)* @nil_quit, %Word 0, %Exp NIL_VALUE, i1 1)
 
-    %env1 = call NILCC %Exp @nil_cons(%Exp %commandContext, %Exp NIL_VALUE)
+    %env1 = call NILCC %Exp @Cons(%Exp %commandContext, %Exp NIL_VALUE)
 
     ; Language primitives
     ; quote
@@ -195,7 +251,15 @@ define NILCC %Exp
     %langContext2 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @carStrPtr,
                     %Exp(%Exp)* @nil_car, %Word 1, %Exp %langContext1, i1 0)
 
-    %env = call NILCC %Exp @nil_cons(%Exp %langContext2, %Exp %env1)
+    ; cdr
+    %langContext3 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @cdrStrPtr,
+                    %Exp(%Exp)* @nil_cdr, %Word 1, %Exp %langContext2, i1 0)
+
+    ; cons
+    %langContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @consStrPtr,
+                   %Exp(%Exp)* @nil_cons, %Word 2, %Exp %langContext3, i1 0)
+
+    %env = call NILCC %Exp @Cons(%Exp %langContext, %Exp %env1)
 
 #if 1
 ; Debugging code to show the binding list on startup
@@ -283,7 +347,7 @@ Found:
     ret %Exp %firstBinding
 
 NotFound:
-    %restAssoc = call NILCC %Exp @nil_cdr(%Exp %assocList)
+    %restAssoc = call NILCC %Exp @Cdr(%Exp %assocList)
     ; Trivial tail call
     %binding = call NILCC %Exp @nil_assoc(%Exp %key, %Exp %restAssoc)
 
@@ -339,12 +403,12 @@ IsCell:
 
 NotFound:
     ; Recurse and check next context
-    %outerEnv = call NILCC %Exp @nil_cdr(%Exp %env)
+    %outerEnv = call NILCC %Exp @Cdr(%Exp %env)
     %outerBinding = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %outerEnv)
     ret %Exp %outerBinding
 
 FoundSymbol:
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %binding)
+    %cdr = call NILCC %Exp @Cdr(%Exp %binding)
 
         #ifndef NDEBUG
         ; Must be a list
@@ -352,7 +416,7 @@ FoundSymbol:
         assert(%isCell)
         ; Must be a 1-element list--we have no good use for anything
         ; else!
-        %cddr = call NILCC %Exp @nil_cdr(%Exp %cdr)
+        %cddr = call NILCC %Exp @Cdr(%Exp %cdr)
         %isNil = call NILCC i1 @IsNil(%Exp %cddr)
         assert(%isNil)
         #endif
@@ -488,7 +552,7 @@ Primitive:
     %primArgNumPtr = getelementptr %nil_primitive* %prim, i64 0, i32 1
     %primArgNum = load %Word* %primArgNumPtr
 
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %combination)
+    %cdr = call NILCC %Exp @Cdr(%Exp %combination)
     %argNum = call NILCC %Word @Len(%Exp %cdr)
 
     %goodArgNum = icmp eq %Word %argNum, %primArgNum
@@ -563,13 +627,13 @@ Cell:
     br i1 %firstOK, label %DoCDR, label %Exception
 
 DoCDR:
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
     %rest = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
     %restOK = call NILCC i1 @NotException(%Exp %rest)
     br i1 %restOK, label %DoCons, label %Exception
 
 DoCons:
-    %cons = call NILCC %Exp @nil_cons(%Exp %first, %Exp %rest)
+    %cons = call NILCC %Exp @Cons(%Exp %first, %Exp %rest)
     ret %Exp %cons
 
 Exception:

@@ -307,7 +307,7 @@ GetCDR:
 ReturnCons:
     %car = extractvalue %ParseExp %carParseExp, 1
     %cdr = extractvalue %ParseExp %cdrParseExp, 1
-    %cell = call NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+    %cell = call NILCC %Exp @Cons(%Exp %car, %Exp %cdr)
     %cellParseExp = insertvalue %ParseExp {%c_int NIL_CELL, %Exp undef},
                                                       %Exp %cell, 1
     ret %ParseExp %cellParseExp

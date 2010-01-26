@@ -144,10 +144,10 @@
     declare NILCC %Exp @Car(%Exp %exp)
 
     ; #5 -- cdr
-    declare NILCC %Exp @nil_cdr(%Exp %exp)
+    declare NILCC %Exp @Cdr(%Exp %exp)
 
     ; #6 -- cons
-    declare NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+    declare NILCC %Exp @Cons(%Exp %car, %Exp %cdr)
 
 ; Other tests
 
