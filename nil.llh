@@ -63,8 +63,12 @@
     #define NIL_CANNOT_APPLY      2
     #define NIL_EXPECTED_LIST     3
     #define NIL_BAD_ARG_NUM       4
+    #define NIL_MALFORMED_ARGS    5
 
     ; Evaluator Types
+
+    ; Code for 'any number of arguments
+    #define NIL_ARGS_ANY -1
 
 #endif
 

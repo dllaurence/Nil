@@ -42,8 +42,8 @@
     ; the interpreter can do some sanity checking, and the string is
     ; a printing format.  The bit flag is whether the primitive is magic
     ; (i.e. handles its own argument evaluation like a macro)
-;    %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*}
-    %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*, i1}
+    %PrimFn = type %Exp (%Exp, %Exp)
+    %nil_primitive = type {%PrimFn*, %Word, %c_char*, i1}
 
     ; For nil_integer, see below because it depends on the number of
     ; tag bits
@@ -130,7 +130,7 @@
 ; internal forms
 
     ; #1 -- quote
-    ; in nil.llm for now
+    ; No internal form
 
     ; #2 -- atom
     declare NILCC i1 @IsAtom(%Exp %exp) ; Internal form
@@ -148,6 +148,9 @@
 
     ; #6 -- cons
     declare NILCC %Exp @Cons(%Exp %car, %Exp %cdr)
+
+    ; #7 -- cond
+    ; No internal form
 
 ; Other tests
 
@@ -170,7 +173,7 @@
     ; The interfaces are somewhat inconsistent, but convenient
     declare NILCC %Exp       @NewSymbol(%c_char* %name)
     declare NILCC %nil_cell* @NewCell()
-    declare NILCC %Exp       @NewPrimitive(%Exp (%Exp)*, %Word %argCount,
+    declare NILCC %Exp       @NewPrimitive(%PrimFn*, %Word %argCount,
                                            %c_char* %printForm, i1 %magic)
 
     ; Lists

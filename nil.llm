@@ -54,6 +54,9 @@
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
 
+    ; Needed public declarations
+    declare NILCC %Exp @Eval(%Exp %exp, %Exp %env)
+
 ; Evaluator parameters
 
     @selfQuote = internal global i1 0
@@ -82,7 +85,7 @@
                   getelementptr (%QuitArrayType* @quitArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_quit(%Exp %exp)
+@nil_quit(%Exp %argList, %Exp %env)
 {
     call ccc void @exit(%c_int 0)
     unreachable
@@ -100,7 +103,7 @@ define NILCC %Exp
                   getelementptr (%SelfQuoteArrayType* @selfQuoteArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_selfquote(%Exp %exp)
+@nil_selfquote(%Exp %argList, %Exp %env)
 {
     store i1 1, i1* @selfQuote
 
@@ -119,7 +122,7 @@ define NILCC %Exp
         getelementptr (%NoSelfQuoteArrayType* @noSelfQuoteArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_noselfquote(%Exp %exp)
+@nil_noselfquote(%Exp %argList, %Exp %env)
 {
     store i1 0, i1* @selfQuote
 
@@ -138,9 +141,9 @@ define NILCC %Exp
                    getelementptr (%QuoteArrayType* @quoteArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_quote(%Exp %exp)
+@nil_quote(%Exp %argList, %Exp %env)
 {
-    %car = call NILCC %Exp @Car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %argList)
     ret %Exp %car
 }
 
@@ -155,9 +158,9 @@ define NILCC %Exp
                    getelementptr (%AtomArrayType* @atomArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_atom(%Exp %exp)
+@nil_atom(%Exp %argList, %Exp %env)
 {
-    %arg = call NILCC %Exp @Car(%Exp %exp)
+    %arg = call NILCC %Exp @Car(%Exp %argList)
 
     %isAtom = call NILCC i1 @IsAtom(%Exp %arg)
     br i1 %isAtom, label %True, label %False
@@ -181,7 +184,7 @@ False:
                    getelementptr (%EqArrayType* @eqArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_eq(%Exp %argList)
+@nil_eq(%Exp %argList, %Exp %env)
 {
     %lhs = call NILCC %Exp @Car(%Exp %argList)
     %rest = call NILCC %Exp @Cdr(%Exp %argList)
@@ -213,7 +216,7 @@ False:
         c"car: expected list\00"
 
 define NILCC %Exp
-@nil_car(%Exp %exp)
+@nil_car(%Exp %exp, %Exp %env)
 {
     %arg = call NILCC %Exp @Car(%Exp %exp)
 
@@ -248,7 +251,7 @@ HaveCell:
         c"cdr: expected list\00"
 
 define NILCC %Exp
-@nil_cdr(%Exp %exp)
+@nil_cdr(%Exp %exp, %Exp %env)
 {
     %arg = call NILCC %Exp @Car(%Exp %exp)
 
@@ -279,7 +282,7 @@ HaveCell:
                    getelementptr (%ConsArrayType* @consArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_cons(%Exp %exp)
+@nil_cons(%Exp %exp, %Exp %env)
 {
     %car = call NILCC %Exp @Car(%Exp %exp)
     %cdr = call NILCC %Exp @Cdr(%Exp %exp)
@@ -287,6 +290,81 @@ define NILCC %Exp
 
     %cons = call NILCC %Exp @Cons(%Exp %car, %Exp %cadr)
     ret %Exp %cons
+}
+
+;**********************************************************************
+; nil_cond
+;
+;**********************************************************************
+
+    %CondArrayType = type [5 x %c_char]
+    @condArray = internal constant %CondArrayType c"cond\00"
+    @condStrPtr = internal constant %c_char*
+                   getelementptr (%CondArrayType* @condArray, i64 0, i64 0)
+
+    %CondExpectedListType = type [45 x %c_char]
+    @condExpectedListArray = internal constant %CondExpectedListType
+        c"cond: expected clause to be a non-empty list\00"
+
+    %CondMalformedArgsType = type [49 x %c_char]
+    @condMalformedArgsArray = internal constant %CondMalformedArgsType
+        c"cond: each clause must have exactly two elements\00"
+
+define NILCC %Exp
+@nil_cond(%Exp %argList, %Exp %env)
+{
+    %isNil = call NILCC i1 @IsNil(%Exp %argList)
+    br i1 %isNil, label %NoClause, label %HaveClause
+
+NoClause:
+    ret %Exp NIL_VALUE
+
+HaveClause:
+    %clause = call NILCC %Exp @Car(%Exp %argList)
+    %clauseIsCell = call NILCC i1 @IsCell(%Exp %clause)
+    br i1 %clauseIsCell, label %HaveCell, label %NotCell
+
+NotCell:
+    ; Each clause must be a list--throw an exception
+    %condExpectedListPtr = getelementptr %CondExpectedListType*
+        @condExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %condExpectedListPtr)
+    %cellXpn = call NILCC %Exp @Exception2Exp(%Word NIL_EXPECTED_LIST)
+    ret %Exp %cellXpn
+
+HaveCell:
+    %clauseLen = call NILCC %Word @Len(%Exp %clause)
+    %wellFormed = icmp eq %Word %clauseLen, 2
+    br i1 %wellFormed, label %WellFormed, label %Malformed
+
+Malformed:
+    ; Throw exception!
+    %condMalformedArgsPtr = getelementptr
+        %CondMalformedArgsType* @condMalformedArgsArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %condMalformedArgsPtr)
+    %argXpn = call NILCC %Exp @Exception2Exp(%Word NIL_MALFORMED_ARGS)
+    ret %Exp %argXpn
+
+WellFormed:
+    %test = call NILCC %Exp @Car(%Exp %clause)
+    %testResult = call NILCC %Exp @Eval(%Exp %test, %Exp %env)
+    ; FIXME: could easily optimize away intermediate boolean
+    ; boxing/unboxing with a separate Cond() function that returns
+    ; an i1
+    %failed = call NILCC i1 @IsNil(%Exp %testResult)
+    br i1 %failed, label %Failed, label %Succeeded
+
+Failed:
+    %nextCond = call NILCC %Exp @Cdr(%Exp %argList)
+    %nextResult = call NILCC %Exp @nil_cond(%Exp %nextCond, %Exp %env)
+    ret %Exp %nextResult
+
+Succeeded:
+    %rest = call NILCC %Exp @Cdr(%Exp %clause)
+    %exp = call NILCC %Exp @Car(%Exp %rest)
+    %thisResult = call NILCC %Exp @Eval(%Exp %exp, %Exp %env)
+     ret %Exp %thisResult
+;    ret %Exp %exp
 }
 
 ;**********************************************************************
@@ -318,14 +396,14 @@ define NILCC %Exp
 @AddPrimitiveBinding
     (
     %c_char** %namePtr,
-    %Exp (%Exp)* %fn,
+    %PrimFn* %fn,
     %Word %nArgs,
     %Exp %context,
     i1 %magic
     )
 {
     %name = load %c_char** %namePtr
-    %prim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* %fn, %Word %nArgs,
+    %prim = call NILCC %Exp @NewPrimitive(%PrimFn* %fn, %Word %nArgs,
                                           %c_char* %name, i1 %magic)
     %newContext = call NILCC %Exp @AddBinding(%c_char** %namePtr,
                                               %Exp %prim,
@@ -338,6 +416,8 @@ define NILCC %Exp
 ;
 ; Constructs the top-level environment
 ;
+; FIXME: re-write in a table-driven fashion
+;
 ;**********************************************************************
 
 define NILCC %Exp
@@ -349,16 +429,16 @@ define NILCC %Exp
 
     ; quit
     %commandContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quitStrPtr,
-                      %Exp(%Exp)* @nil_quit, %Word 0, %Exp NIL_VALUE, i1 1)
+                      %PrimFn* @nil_quit, %Word 0, %Exp NIL_VALUE, i1 1)
 
     ; selfquote
     %commandContext2 = call NILCC %Exp @AddPrimitiveBinding(
-        %c_char** @selfQuoteStrPtr, %Exp(%Exp)* @nil_selfquote,
+        %c_char** @selfQuoteStrPtr, %PrimFn* @nil_selfquote,
         %Word 0, %Exp %commandContext1, i1 1)
 
     ; noselfquote
     %commandContext = call NILCC %Exp @AddPrimitiveBinding(
-        %c_char** @noSelfQuoteStrPtr, %Exp(%Exp)* @nil_noselfquote,
+        %c_char** @noSelfQuoteStrPtr, %PrimFn* @nil_noselfquote,
         %Word 0, %Exp %commandContext2, i1 1)
 
     %env1 = call NILCC %Exp @Cons(%Exp %commandContext, %Exp NIL_VALUE)
@@ -377,27 +457,32 @@ define NILCC %Exp
 
     ; quote
     %langContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quoteStrPtr,
-                    %Exp(%Exp)* @nil_quote, %Word 1, %Exp %langContext0, i1 1)
+                    %PrimFn* @nil_quote, %Word 1, %Exp %langContext0, i1 1)
 
     ; atom
     %langContext2 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @atomStrPtr,
-                    %Exp(%Exp)* @nil_atom, %Word 1, %Exp %langContext1, i1 0)
+                    %PrimFn* @nil_atom, %Word 1, %Exp %langContext1, i1 0)
 
     ; eq
     %langContext3 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @eqStrPtr,
-                    %Exp(%Exp)* @nil_eq, %Word 2, %Exp %langContext2, i1 0)
+                    %PrimFn* @nil_eq, %Word 2, %Exp %langContext2, i1 0)
 
     ; car
     %langContext4 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @carStrPtr,
-                    %Exp(%Exp)* @nil_car, %Word 1, %Exp %langContext3, i1 0)
+                    %PrimFn* @nil_car, %Word 1, %Exp %langContext3, i1 0)
 
     ; cdr
     %langContext5 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @cdrStrPtr,
-                    %Exp(%Exp)* @nil_cdr, %Word 1, %Exp %langContext4, i1 0)
+                    %PrimFn* @nil_cdr, %Word 1, %Exp %langContext4, i1 0)
 
     ; cons
-    %langContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @consStrPtr,
-                   %Exp(%Exp)* @nil_cons, %Word 2, %Exp %langContext5, i1 0)
+    %langContext6 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @consStrPtr,
+                    %PrimFn* @nil_cons, %Word 2, %Exp %langContext5, i1 0)
+
+    ; cond
+    %langContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @condStrPtr,
+                   %PrimFn* @nil_cond, %Word NIL_ARGS_ANY, %Exp %langContext5,
+                   i1 1)
 
     %env = call NILCC %Exp @Cons(%Exp %langContext, %Exp %env1)
 
@@ -692,14 +777,18 @@ CannotApply:
     ret %Exp %xpn
 
 Primitive:
+    ; FIXME: break this out into a separate 'ApplyPrimitive()' function
     %prim = call NILCC %nil_primitive* @Exp2nil_primitive(%Exp %fn)
     %primFnPtr = getelementptr %nil_primitive* %prim, i64 0, i32 0
-    %primFn = load %Exp (%Exp)** %primFnPtr
+    %primFn = load %PrimFn** %primFnPtr
 
     %primArgNumPtr = getelementptr %nil_primitive* %prim, i64 0, i32 1
     %primArgNum = load %Word* %primArgNumPtr
-
+    %anyArgs = icmp eq %Word %primArgNum, NIL_ARGS_ANY
     %cdr = call NILCC %Exp @Cdr(%Exp %combination)
+    br i1 %anyArgs, label %GoodArgNum, label %CheckArgs
+
+CheckArgs:
     %argNum = call NILCC %Word @Len(%Exp %cdr)
 
     %goodArgNum = icmp eq %Word %argNum, %primArgNum
@@ -728,7 +817,7 @@ ArgException:
 
 IsMagic:
     %args = phi %Exp [%evalArgs, %NotMagic], [%cdr, %GoodArgNum]
-    %result = call NILCC %Exp %primFn(%Exp %args)
+    %result = call NILCC %Exp %primFn(%Exp %args, %Exp %env)
     ret %Exp %result
 }
 
@@ -825,24 +914,6 @@ CantHappen:
 
 Done:
     call NILCC void @UngetParseExp(%ParseExp %parseExp)
-    ret void
-}
-
-;**********************************************************************
-; NewlineIf
-;
-;**********************************************************************
-
-define NILCC void
-@NewlineIf(i1 %cond)
-{
-    br i1 %cond, label %Newline, label %Done
-
-Newline:
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
-    br label %Done
-
-Done:
     ret void
 }
 
@@ -984,11 +1055,6 @@ ExtraRParen:
 define %c_int
 @main(%c_int %argc, %c_char **%argv)
 {
-    ; This flag is necessary to avoid double-spacing the prompt when
-    ; nothing was entered.
-    %hadInputPtr = alloca i1
-    store i1 0, i1* %hadInputPtr
-
     ; The initial evaluation environment
     %env = call NILCC %Exp @GetEnv()
 
@@ -1005,7 +1071,6 @@ ReadExp:
     ; Because of single assignment, this is more convenient
     ; to load here even though only Newline and the exception
     ; handlers need it
-    %hadInput = load i1* %hadInputPtr
 
     switch %c_int %code, label %CantHappen [
 
@@ -1025,15 +1090,11 @@ CantHappen:
     br label %CantHappen
 
 ParseException:
-    call NILCC void @NewlineIf(i1 %hadInput)
     %exception = extractvalue %ParseExp %parseExp, 1
     %continue = call NILCC i1 @HandleParserException(%Exp %exception)
-    store i1 0, i1* %hadInputPtr
     br i1 %continue, label %ReadExp, label %Exit
 
 NewLine:
-    call NILCC void @NewlineIf(i1 %hadInput)
-    store i1 0, i1* %hadInputPtr
     br label %Prompt
 
 EvalExp:
@@ -1041,6 +1102,7 @@ EvalExp:
     %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp %env)
     call NILCC void @PrintResultPrefix()
     call NILCC void @PrintExp(%Exp %exp)
+call %c_int @putchar(%c_int ASCII_NEWLINE)
 
     ; If we got an exception, toss the rest of the line
     %evalOK = call NILCC i1 @NotException(%Exp %exp)
@@ -1051,8 +1113,6 @@ EvalException:
     br label %EvalOK
 
 EvalOK:
-    call ccc %c_int @putchar(%c_int ASCII_SPACE)
-    store i1 1, i1* %hadInputPtr
     br label %ReadExp
 
 Exit:

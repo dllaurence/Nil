@@ -938,12 +938,12 @@ define NILCC %nil_cell*
 ;**********************************************************************
 
 define NILCC %Exp
-@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm,
+@NewPrimitive(%PrimFn* %fnPtr, %Word %argCount, %c_char* %printForm,
               i1 %magic)
 {
         #ifndef NDEBUG
         ; Better not be a null function pointer
-        %notNull = icmp ne %Exp (%Exp)* %fnPtr, null
+        %notNull = icmp ne %PrimFn* %fnPtr, null
         assert(%notNull)
 
         ; Must either have a non-negative argument count or -1 for "any"
@@ -967,7 +967,7 @@ define NILCC %Exp
 
     ; Set function pointer
     %fnFieldPtr = getelementptr %nil_primitive* %newPrim, i64 0, i32 0
-    store %Exp (%Exp)* %fnPtr, %Exp (%Exp)** %fnFieldPtr
+    store %PrimFn* %fnPtr, %PrimFn** %fnFieldPtr
 
     ; Set the argument count
     %argCountField = getelementptr %nil_primitive* %newPrim, i64 0, i32 1
@@ -1054,14 +1054,25 @@ define NILCC %Word
     @badArgNumArray = internal constant %BadArgNumType
         c"mismatched argument count\00"
 
-    #define EXCEPTIONMSGS_NUM 5
+    %MalformedArgsType = type [15 x %c_char]
+    @malformedArgsArray = internal constant %MalformedArgsType
+        c"malformed args\00"
+
+    #define EXCEPTIONMSGS_NUM 6
     %ExceptionMsgsType = type [EXCEPTIONMSGS_NUM x %c_char*]
     @exceptionMsgs = internal constant %ExceptionMsgsType [
-        %c_char* getelementptr (%UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0 ),
-        %c_char* getelementptr (%DotPairType* @dotPairArray, i64 0, i64 0 ),
-        %c_char* getelementptr (%CannotApplyType* @cannotApplyArray, i64 0, i64 0 ),
-        %c_char* getelementptr (%ExpectedListType* @expectedListArray, i64 0, i64 0 ),
-        %c_char* getelementptr (%BadArgNumType* @badArgNumArray, i64 0, i64 0)
+        %c_char* getelementptr (%UnknownSymbolType* @unknownSymbolArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%DotPairType* @dotPairArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%CannotApplyType* @cannotApplyArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%ExpectedListType* @expectedListArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%BadArgNumType* @badArgNumArray,
+                                i64 0, i64 0),
+        %c_char* getelementptr (%MalformedArgsType* @malformedArgsArray,
+                                i64 0, i64 0)
     ]
 
 define NILCC %c_char*
