@@ -121,7 +121,7 @@ define NILCC %Exp
 
     %QuoteArrayType = type [6 x %c_char]
     @quoteArray = internal constant %QuoteArrayType c"quote\00"
-    @quoteStrPtr = internal constant %c_char*
+    @quoteStrPtr = constant %c_char*
                    getelementptr (%QuoteArrayType* @quoteArray, i64 0, i64 0)
 
 define NILCC %Exp

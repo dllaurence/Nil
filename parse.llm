@@ -40,6 +40,7 @@ define NILCC %ParseExp
 
         %c_int ASCII_NEWLINE,  label %PassThrough
 
+        %c_int ASCII_SQUOTE,   label %PassThrough
         %c_int ASCII_LPAREN,   label %PassThrough
         %c_int ASCII_RPAREN,   label %PassThrough
         %c_int NIL_SYMBOL,     label %ReturnComposite
@@ -188,6 +189,8 @@ define NILCC void
 ;
 ;**********************************************************************
 
+    @quoteStrPtr = external constant %c_char*
+
 define NILCC %ParseExp
 @ReadExp()
 {
@@ -205,6 +208,7 @@ GetParseExp:
         %c_int NIL_CELL,       label %CantHappen  ; Noted explicitly
         %c_int NIL_SYMBOL,     label %ReturnParseExp
 
+        %c_int ASCII_SQUOTE,   label %QuoteNext
         %c_int ASCII_LPAREN,   label %BeginList
         %c_int ASCII_RPAREN,   label %EndList
 
@@ -230,8 +234,28 @@ ReturnParseExp:
 #if 0
                             [%parseExp, %GetParseExp],
 #endif
-                            [%listParseExp, %BeginList]
+                            [%listParseExp, %BeginList],
+                            [%nextParseExp, %QuoteNext]
     ret %ParseExp %retParseExp
+
+QuoteNext:
+    ; FIXME: consider turning this into a helper function if/when we
+    ; have another special parser character with similar behavior
+    ; Drop single quote
+    %nextParseExp = call NILCC %ParseExp @ReadExp()
+    %nextParseExpType = extractvalue %ParseExp %nextParseExp, 0
+    %gotQuoteException = icmp eq %c_int %nextParseExpType, NIL_EXCEPTION
+    br i1 %gotQuoteException, label %ReturnParseExp, label %GotNextExp
+
+GotNextExp:
+    %nextExp = extractvalue %ParseExp %nextParseExp, 1
+    %cdr = call NILCC %Exp @Cons(%Exp %nextExp, %Exp NIL_VALUE)
+    %quoteStr = load %c_char** @quoteStrPtr
+    %quoteSymbol = call NILCC %Exp @NewSymbol(%c_char* %quoteStr)
+    %quoteExp = call NILCC %Exp @Cons(%Exp %quoteSymbol, %Exp %cdr)
+    %quoteParseExp = insertvalue %ParseExp {%c_int NIL_CELL, %Exp undef},
+                                                   %Exp %quoteExp, 1
+     ret %ParseExp %quoteParseExp
 
 EndList:
     %lParenParseExp = insertvalue %ParseExp {%c_int NIL_EXCEPTION, %Exp undef},

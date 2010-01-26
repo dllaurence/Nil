@@ -36,13 +36,6 @@
     #define ASCII_PLUS      43
     #define ASCII_MINUS     45
     #define ASCII_PERIOD    46
-    #define ASCII_COLON     58
-    #define ASCII_SEMICOLON 59
-    #define ASCII_LANGLE    60
-    #define ASCII_LT        60
-    #define ASCII_EQUAL     61
-    #define ASCII_RANGLE    62
-    #define ASCII_GT        62
 
     ; Digits
     #define ASCII_0         48
@@ -55,6 +48,15 @@
     #define ASCII_7         55
     #define ASCII_8         56
     #define ASCII_9         57
+
+    ; More Symbols
+    #define ASCII_COLON     58
+    #define ASCII_SEMICOLON 59
+    #define ASCII_LANGLE    60
+    #define ASCII_LT        60
+    #define ASCII_EQUAL     61
+    #define ASCII_RANGLE    62
+    #define ASCII_GT        62
 
     ; Majescules
     #define ASCII_A         65
