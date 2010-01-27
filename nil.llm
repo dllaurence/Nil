@@ -54,22 +54,513 @@
 ; an external declaration. :-(
     @exceptionCode = global %Word 0
 
+    ; Needed public declarations
+    declare NILCC %Exp @Eval(%Exp %exp, %Exp %env)
+
+; Evaluator parameters
+
+    @selfQuote = internal global i1 0
+
+
+    ; We're caching the value of t both for efficiency and so insane
+    ; redefinitions can't change the evaluator behavior.  Arguably
+    ; we should follow scheme and make this a magic value instead of
+    ; an ordinary symbol.
+    ; Initialize this value or there will be trouble!
+    @tPtr = internal global %Exp NIL_VALUE
+
+    %TArrayType = type [2 x %c_char]
+    @tArray = internal constant %TArrayType c"t\00"
+    @tStrPtr = internal constant %c_char* 
+                  getelementptr (%TArrayType* @tArray, i64 0, i64 0)
+
+;**********************************************************************
+; Commands
+;
+; While formally no different than language primitives, conceptually
+; these operators manipulate the interpreter rather than being part
+; of the regular programming vocabulary.
+;
+;**********************************************************************
+
 ;**********************************************************************
 ; nil_quit
 ;
 ;**********************************************************************
 
-    #define QUITARRAY_LEN 5
-    %QuitArrayType = type [QUITARRAY_LEN x %c_char]
+    %QuitArrayType = type [5 x %c_char]
     @quitArray = internal constant %QuitArrayType c"quit\00"
+    @quitStrPtr = internal constant %c_char* 
+                  getelementptr (%QuitArrayType* @quitArray, i64 0, i64 0)
 
 define NILCC %Exp
-@nil_quit(%Exp %exp)
+@nil_quit(%Exp %argList, %Exp %env)
 {
-    ; Ignore inputs
     call ccc void @exit(%c_int 0)
     unreachable
     ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_selfquote
+;
+;**********************************************************************
+
+    %SelfQuoteArrayType = type [10 x %c_char]
+    @selfQuoteArray = internal constant %SelfQuoteArrayType c"selfquote\00"
+    @selfQuoteStrPtr = internal constant %c_char* 
+                  getelementptr (%SelfQuoteArrayType* @selfQuoteArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_selfquote(%Exp %argList, %Exp %env)
+{
+    store i1 1, i1* @selfQuote
+
+    ; Useless return value
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_noselfquote
+;
+;**********************************************************************
+
+    %NoSelfQuoteArrayType = type [12 x %c_char]
+    @noSelfQuoteArray = internal constant %NoSelfQuoteArrayType c"noselfquote\00"
+    @noSelfQuoteStrPtr = internal constant %c_char* 
+        getelementptr (%NoSelfQuoteArrayType* @noSelfQuoteArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_noselfquote(%Exp %argList, %Exp %env)
+{
+    store i1 0, i1* @selfQuote
+
+    ; Useless return value
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_symbols
+;
+;**********************************************************************
+
+    %SymbolsArrayType = type [8 x %c_char]
+    @symbolsArray = internal constant %SymbolsArrayType c"symbols\00"
+    @symbolsStrPtr = internal constant %c_char* 
+        getelementptr (%SymbolsArrayType* @symbolsArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_symbols(%Exp %argList, %Exp %env)
+{
+    %envIsNil = call NILCC i1 @IsNil(%Exp %env)
+    br i1 %envIsNil, label %EnvIsNil, label %EnvNotNil
+
+EnvIsNil:
+    ret %Exp NIL_VALUE
+
+EnvNotNil:
+        #ifndef NDEBUG
+        %isCell = call NILCC i1 @IsCell(%Exp %env)
+        assert(%isCell)
+        #endif
+
+    %car = call NILCC %Exp @Car(%Exp %env)
+    %carIsAtom = call NILCC i1 @IsAtom(%Exp %car)
+    br i1 %carIsAtom, label %CARIsAtom, label %CARIsCell
+
+CARIsAtom:
+    ret %Exp %car
+
+CARIsCell:
+    %carSyms = call NILCC %Exp @nil_symbols(%Exp %argList, %Exp %car)
+    %cdr = call NILCC %Exp @Cdr(%Exp %env)
+    %cdrSyms = call NILCC %Exp @nil_symbols(%Exp %argList, %Exp %cdr)
+    %cons = call NILCC %Exp @Cons(%Exp %carSyms, %Exp %cdrSyms)
+    ret %Exp %cons
+}
+
+;**********************************************************************
+; nil_env
+;
+;**********************************************************************
+
+    %EnvArrayType = type [4 x %c_char]
+    @envArray = internal constant %EnvArrayType c"env\00"
+    @envStrPtr = internal constant %c_char* 
+                  getelementptr (%EnvArrayType* @envArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_env(%Exp %argList, %Exp %env)
+{
+    ret %Exp %env
+}
+
+;**********************************************************************
+; nil_strings
+;
+;**********************************************************************
+
+    %StringsArrayType = type [8 x %c_char]
+    @stringsArray = internal constant %StringsArrayType c"strings\00"
+    @stringsStrPtr = internal constant %c_char* 
+                  getelementptr (%StringsArrayType* @stringsArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_strings(%Exp %argList, %Exp %env)
+{
+    %stringList = call NILCC %Exp @Strings()
+    ret %Exp %stringList
+}
+
+;**********************************************************************
+; nil_help
+;
+;**********************************************************************
+
+    %HelpArrayType = type [5 x %c_char]
+    @helpArray = internal constant %HelpArrayType c"help\00"
+    @helpStrPtr = internal constant %c_char* 
+                  getelementptr (%HelpArrayType* @helpArray, i64 0, i64 0)
+
+    %HelpHelpType = type [41 x %c_char]
+    @helpHelpArray = internal constant %HelpHelpType
+        c"    (help)     display this help message\00"
+
+    %HelpSymbolsType = type [65 x %c_char]
+    @helpSymbolsArray = internal constant %HelpSymbolsType
+        c"    (symbols)  display all defined symbols (without definitions)\00"
+
+    %HelpEnvType = type [67 x %c_char]
+    @helpEnvArray = internal constant %HelpEnvType
+        c"    (env)      display the complete environment (with definitions)\00"
+
+    %HelpStringsType = type [57 x %c_char]
+    @helpStringsArray = internal constant %HelpStringsType
+        c"    (strings)  display all known strings (for debugging)\00"
+
+    %HelpMsgsType = type [5 x %c_char*]
+    @helpMsgs = internal constant %HelpMsgsType [
+        %c_char* getelementptr (%HelpHelpType* @helpHelpArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%HelpSymbolsType* @helpSymbolsArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%HelpEnvType* @helpEnvArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%HelpStringsType* @helpStringsArray,
+                                i64 0, i64 0 ),
+        %c_char* null
+    ]
+
+define NILCC %Exp
+@nil_help(%Exp %argList, %Exp %env)
+{
+Entry:
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
+    %startPtr = getelementptr %HelpMsgsType* @helpMsgs, i64 0, i64 0
+    %startMsg = load %c_char** %startPtr
+    br label %Loop
+
+Loop:
+    %msgPtr = phi %c_char** [%startPtr, %Entry], [%nextPtr, %Loop]
+    %msg = phi %c_char* [%startMsg, %Entry], [%nextMsg, %Loop]
+    call %c_int @puts(%c_char* %msg)
+    %nextPtr = getelementptr %c_char** %msgPtr, i64 1
+    %nextMsg = load %c_char** %nextPtr
+    %notNull = icmp ne %c_char* %nextMsg, null
+    br i1 %notNull, label %Loop, label %Finished
+
+Finished:
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; The seven basic primitives
+;
+; These functions implement the seven basic primitives in Graham's
+; (and therefore McCarthy's) paper.
+;
+;**********************************************************************
+
+;**********************************************************************
+; nil_quote (#1)
+;
+;**********************************************************************
+
+    %QuoteArrayType = type [6 x %c_char]
+    @quoteArray = internal constant %QuoteArrayType c"quote\00"
+    @quoteStrPtr = constant %c_char*
+                   getelementptr (%QuoteArrayType* @quoteArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_quote(%Exp %argList, %Exp %env)
+{
+    %car = call NILCC %Exp @Car(%Exp %argList)
+    ret %Exp %car
+}
+
+;**********************************************************************
+; nil_atom (#2)
+;
+;**********************************************************************
+
+    %AtomArrayType = type [5 x %c_char]
+    @atomArray = internal constant %AtomArrayType c"atom\00"
+    @atomStrPtr = constant %c_char*
+                   getelementptr (%AtomArrayType* @atomArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_atom(%Exp %argList, %Exp %env)
+{
+    %arg = call NILCC %Exp @Car(%Exp %argList)
+
+    %isAtom = call NILCC i1 @IsAtom(%Exp %arg)
+    br i1 %isAtom, label %True, label %False
+
+True:
+    %t = load %Exp* @tPtr
+    ret %Exp %t
+
+False:
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_eq (#3)
+;
+;**********************************************************************
+
+    %EqArrayType = type [3 x %c_char]
+    @eqArray = internal constant %EqArrayType c"eq\00"
+    @eqStrPtr = constant %c_char*
+                   getelementptr (%EqArrayType* @eqArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_eq(%Exp %argList, %Exp %env)
+{
+    %lhs = call NILCC %Exp @Car(%Exp %argList)
+    %rest = call NILCC %Exp @Cdr(%Exp %argList)
+    %rhs = call NILCC %Exp @Car(%Exp %rest)
+
+    %isEq = call NILCC i1 @Eq(%Exp %lhs, %Exp %rhs)
+    br i1 %isEq, label %True, label %False
+
+True:
+    %t = load %Exp* @tPtr
+    ret %Exp %t
+
+False:
+    ret %Exp NIL_VALUE
+}
+
+;**********************************************************************
+; nil_car (#4)
+;
+;**********************************************************************
+
+    %CARArrayType = type [4 x %c_char]
+    @carArray = internal constant %CARArrayType c"car\00"
+    @carStrPtr = internal constant %c_char*
+                   getelementptr (%CARArrayType* @carArray, i64 0, i64 0)
+
+    %CARExpectedListType = type [19 x %c_char]
+    @carExpectedListArray = internal constant %CARExpectedListType
+        c"car: expected list\00"
+
+define NILCC %Exp
+@nil_car(%Exp %exp, %Exp %env)
+{
+    %arg = call NILCC %Exp @Car(%Exp %exp)
+
+    %isCell = call NILCC i1 @IsCell(%Exp %arg)
+    br i1 %isCell, label %HaveCell, label %NoCell
+
+NoCell:
+    ; This is an error, throw an exception
+    %carExpectedListPtr = getelementptr %CARExpectedListType*
+        @carExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %carExpectedListPtr)
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_EXPECTED_LIST)
+    ret %Exp %xpn
+
+HaveCell:
+    %car = call NILCC %Exp @Car(%Exp %arg)
+    ret %Exp %car
+}
+
+;**********************************************************************
+; nil_cdr (#5)
+;
+;**********************************************************************
+
+    %CDRArrayType = type [4 x %c_char]
+    @cdrArray = internal constant %CDRArrayType c"cdr\00"
+    @cdrStrPtr = internal constant %c_char*
+                   getelementptr (%CDRArrayType* @cdrArray, i64 0, i64 0)
+
+    %CDRExpectedListType = type [19 x %c_char]
+    @cdrExpectedListArray = internal constant %CDRExpectedListType
+        c"cdr: expected list\00"
+
+define NILCC %Exp
+@nil_cdr(%Exp %exp, %Exp %env)
+{
+    %arg = call NILCC %Exp @Car(%Exp %exp)
+
+    %isCell = call NILCC i1 @IsCell(%Exp %arg)
+    br i1 %isCell, label %HaveCell, label %NoCell
+
+NoCell:
+    ; This is an error, throw an exception
+    %cdrExpectedListPtr = getelementptr %CDRExpectedListType*
+        @cdrExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %cdrExpectedListPtr)
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_EXPECTED_LIST)
+    ret %Exp %xpn
+
+HaveCell:
+    %cdr = call NILCC %Exp @Cdr(%Exp %arg)
+    ret %Exp %cdr
+}
+
+;**********************************************************************
+; nil_cons (#6)
+;
+;**********************************************************************
+
+    %ConsArrayType = type [5 x %c_char]
+    @consArray = internal constant %ConsArrayType c"cons\00"
+    @consStrPtr = internal constant %c_char*
+                   getelementptr (%ConsArrayType* @consArray, i64 0, i64 0)
+
+define NILCC %Exp
+@nil_cons(%Exp %exp, %Exp %env)
+{
+    %car = call NILCC %Exp @Car(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
+    %cadr = call NILCC %Exp @Car(%Exp %cdr)
+
+    %cons = call NILCC %Exp @Cons(%Exp %car, %Exp %cadr)
+    ret %Exp %cons
+}
+
+;**********************************************************************
+; nil_cond (#7)
+;
+;**********************************************************************
+
+    %CondArrayType = type [5 x %c_char]
+    @condArray = internal constant %CondArrayType c"cond\00"
+    @condStrPtr = internal constant %c_char*
+                   getelementptr (%CondArrayType* @condArray, i64 0, i64 0)
+
+    %CondExpectedListType = type [45 x %c_char]
+    @condExpectedListArray = internal constant %CondExpectedListType
+        c"cond: expected clause to be a non-empty list\00"
+
+    %CondMalformedArgsType = type [49 x %c_char]
+    @condMalformedArgsArray = internal constant %CondMalformedArgsType
+        c"cond: each clause must have exactly two elements\00"
+
+define NILCC %Exp
+@nil_cond(%Exp %argList, %Exp %env)
+{
+    %isNil = call NILCC i1 @IsNil(%Exp %argList)
+    br i1 %isNil, label %NoClause, label %HaveClause
+
+NoClause:
+    ret %Exp NIL_VALUE
+
+HaveClause:
+    %clause = call NILCC %Exp @Car(%Exp %argList)
+    %clauseIsCell = call NILCC i1 @IsCell(%Exp %clause)
+    br i1 %clauseIsCell, label %HaveCell, label %NotCell
+
+NotCell:
+    ; Each clause must be a list--throw an exception
+    %condExpectedListPtr = getelementptr %CondExpectedListType*
+        @condExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %condExpectedListPtr)
+    %cellXpn = call NILCC %Exp @Exception2Exp(%Word NIL_EXPECTED_LIST)
+    ret %Exp %cellXpn
+
+HaveCell:
+    %clauseLen = call NILCC %Word @Len(%Exp %clause)
+    %wellFormed = icmp eq %Word %clauseLen, 2
+    br i1 %wellFormed, label %WellFormed, label %Malformed
+
+Malformed:
+    ; Throw exception!
+    %condMalformedArgsPtr = getelementptr
+        %CondMalformedArgsType* @condMalformedArgsArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %condMalformedArgsPtr)
+    %argXpn = call NILCC %Exp @Exception2Exp(%Word NIL_MALFORMED_ARGS)
+    ret %Exp %argXpn
+
+WellFormed:
+    %test = call NILCC %Exp @Car(%Exp %clause)
+    %testResult = call NILCC %Exp @Eval(%Exp %test, %Exp %env)
+    ; FIXME: could easily optimize away intermediate boolean
+    ; boxing/unboxing with a separate Cond() function that returns
+    ; an i1
+    %failed = call NILCC i1 @IsNil(%Exp %testResult)
+    br i1 %failed, label %Failed, label %Succeeded
+
+Failed:
+    %nextCond = call NILCC %Exp @Cdr(%Exp %argList)
+    %nextResult = call NILCC %Exp @nil_cond(%Exp %nextCond, %Exp %env)
+    ret %Exp %nextResult
+
+Succeeded:
+    %rest = call NILCC %Exp @Cdr(%Exp %clause)
+    %exp = call NILCC %Exp @Car(%Exp %rest)
+    %thisResult = call NILCC %Exp @Eval(%Exp %exp, %Exp %env)
+     ret %Exp %thisResult
+;    ret %Exp %exp
+}
+
+;**********************************************************************
+; AddBinding
+;
+; Add a binding to a context.
+;
+;**********************************************************************
+
+define NILCC %Exp
+@AddBinding(%c_char** %namePtr, %Exp %value, %Exp %context)
+{
+    %name = load %c_char** %namePtr
+    %sym = call NILCC %Exp @NewSymbol(%c_char* %name)
+    %cdr = call NILCC %Exp @Cons(%Exp %value, %Exp NIL_VALUE)
+    %binding = call NILCC %Exp @Cons(%Exp %sym, %Exp %cdr)
+    %newContext = call NILCC %Exp @Cons(%Exp %binding,
+                                           %Exp %context)
+
+    ret %Exp %newContext
+}
+
+;**********************************************************************
+; AddPrimitiveBinding
+;
+;**********************************************************************
+
+define NILCC %Exp
+@AddPrimitiveBinding
+    (
+    %c_char** %namePtr,
+    %PrimFn* %fn,
+    %Word %nArgs,
+    %Exp %context,
+    i1 %magic
+    )
+{
+    %name = load %c_char** %namePtr
+    %prim = call NILCC %Exp @NewPrimitive(%PrimFn* %fn, %Word %nArgs,
+                                          %c_char* %name, i1 %magic)
+    %newContext = call NILCC %Exp @AddBinding(%c_char** %namePtr,
+                                              %Exp %prim,
+                                              %Exp %context)
+    ret %Exp %newContext
 }
 
 ;**********************************************************************
@@ -77,22 +568,97 @@ define NILCC %Exp
 ;
 ; Constructs the top-level environment
 ;
+; FIXME: re-write in a table-driven fashion
+;
 ;**********************************************************************
 
 define NILCC %Exp
 @GetEnv()
 {
-    %quitStr = getelementptr %QuitArrayType* @quitArray, i64 0, i64 0
-    %quitPrim = call NILCC %Exp @NewPrimitive(%Exp (%Exp)* @nil_quit,
-                                          %Word -1, %c_char* %quitStr)
-    %quitSym = call NILCC %Exp @NewSymbol(%c_char* %quitStr)
-    %quitCDR = call NILCC %Exp @nil_cons(%Exp %quitPrim, %Exp NIL_VALUE)
-    %quitAssoc = call NILCC %Exp @nil_cons(%Exp %quitSym,
-                                           %Exp %quitCDR)
-    %assocList1 = call NILCC %Exp @nil_cons(%Exp %quitAssoc,
-                                            %Exp NIL_VALUE)
+    ; Command primitives--these are conceptually ways to control the
+    ; interpreter rather than language elements per se, though in
+    ; reality there is no difference
 
-    ret %Exp %assocList1
+    ; quit
+    %commandContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quitStrPtr,
+                      %PrimFn* @nil_quit, %Word 0, %Exp NIL_VALUE, i1 1)
+
+    ; selfquote
+    %commandContext2 = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @selfQuoteStrPtr, %PrimFn* @nil_selfquote,
+        %Word 0, %Exp %commandContext1, i1 1)
+
+    ; noselfquote
+    %commandContext3 = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @noSelfQuoteStrPtr, %PrimFn* @nil_noselfquote,
+        %Word 0, %Exp %commandContext2, i1 1)
+
+    ; symbols
+    %commandContext4 = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @symbolsStrPtr, %PrimFn* @nil_symbols,
+        %Word 0, %Exp %commandContext3, i1 1)
+
+    ; env
+    %commandContext5 = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @envStrPtr, %PrimFn* @nil_env,
+        %Word 0, %Exp %commandContext4, i1 1)
+
+    ; strings
+    %commandContext6 = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @stringsStrPtr, %PrimFn* @nil_strings,
+        %Word 0, %Exp %commandContext5, i1 1)
+
+    ; help
+    %commandContext = call NILCC %Exp @AddPrimitiveBinding(
+        %c_char** @helpStrPtr, %PrimFn* @nil_help,
+        %Word 0, %Exp %commandContext6, i1 1)
+
+    %env1 = call NILCC %Exp @Cons(%Exp %commandContext, %Exp NIL_VALUE)
+
+    ; Language primitives
+    ; t
+    ; Unfortunately must get the symbol so we can create the binding;
+    ; if we do more of these there should be a 'AddSelfBinding' function
+    %tStr = load %c_char** @tStrPtr
+    %t = call NILCC %Exp @NewSymbol(%c_char* %tStr)
+    ; Cache the value of t for efficiency and so redefinitions by insane
+    ; programmers won't affect the evaluator code
+    store %Exp %t, %Exp* @tPtr
+    %langContext0 = call NILCC %Exp @AddBinding(%c_char** @tStrPtr,
+        %Exp %t, %Exp NIL_VALUE)
+
+    ; quote
+    %langContext1 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @quoteStrPtr,
+                    %PrimFn* @nil_quote, %Word 1, %Exp %langContext0, i1 1)
+
+    ; atom
+    %langContext2 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @atomStrPtr,
+                    %PrimFn* @nil_atom, %Word 1, %Exp %langContext1, i1 0)
+
+    ; eq
+    %langContext3 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @eqStrPtr,
+                    %PrimFn* @nil_eq, %Word 2, %Exp %langContext2, i1 0)
+
+    ; car
+    %langContext4 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @carStrPtr,
+                    %PrimFn* @nil_car, %Word 1, %Exp %langContext3, i1 0)
+
+    ; cdr
+    %langContext5 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @cdrStrPtr,
+                    %PrimFn* @nil_cdr, %Word 1, %Exp %langContext4, i1 0)
+
+    ; cons
+    %langContext6 = call NILCC %Exp @AddPrimitiveBinding(%c_char** @consStrPtr,
+                    %PrimFn* @nil_cons, %Word 2, %Exp %langContext5, i1 0)
+
+    ; cond
+    %langContext = call NILCC %Exp @AddPrimitiveBinding(%c_char** @condStrPtr,
+                   %PrimFn* @nil_cond, %Word NIL_ARGS_ANY, %Exp %langContext6,
+                   i1 1)
+
+    %env = call NILCC %Exp @Cons(%Exp %langContext, %Exp %env1)
+
+    ret %Exp %env
 }
 
 ;**********************************************************************
@@ -108,13 +674,11 @@ define NILCC %Exp
 ;
 ;**********************************************************************
 
-    #define EXPECTEDLISTARRAY_LEN 21
-    %ExpectedListType = type [EXPECTEDLISTARRAY_LEN x %c_char]
-    @expectedListArray = internal constant %ExpectedListType
+    %AssocExpectedListType = type [21 x %c_char]
+    @assocExpectedListArray = internal constant %AssocExpectedListType
         c"assoc: expected list\00"
 
-    #define EXPECTEDBINDINGARRAY_LEN 24
-    %ExpectedBindingType = type [EXPECTEDBINDINGARRAY_LEN x %c_char]
+    %ExpectedBindingType = type [24 x %c_char]
     @expectedBindingArray = internal constant %ExpectedBindingType
         c"assoc: expected binding\00"
 
@@ -135,9 +699,9 @@ HaveNil:
 
 HaveAtom:
     ; This is an error, throw an exception
-    %expectedListPtr = getelementptr %ExpectedListType*
-        @expectedListArray, i64 0, i64 0
-    call %c_int @puts(%c_char* %expectedListPtr)
+    %assocExpectedListPtr = getelementptr %AssocExpectedListType*
+        @assocExpectedListArray, i64 0, i64 0
+    call %c_int @puts(%c_char* %assocExpectedListPtr)
     br label %Exception
 
 Exception:
@@ -145,7 +709,7 @@ Exception:
     ret %Exp %xpn
 
 HaveList:
-    %firstBinding = call NILCC %Exp @nil_car(%Exp %assocList)
+    %firstBinding = call NILCC %Exp @Car(%Exp %assocList)
 
     ; Is this really a binding?  It needs to be a cell, but
     ; can be arbitrary otherwise
@@ -162,7 +726,7 @@ NotBinding:
 
 HaveBinding:
     ; Does the first entry have the key?
-    %thisKey = call NILCC %Exp @nil_car(%Exp %firstBinding)
+    %thisKey = call NILCC %Exp @Car(%Exp %firstBinding)
     %notFound = call NILCC i1 @NotEq(%Exp %key, %Exp %thisKey)
     br i1 %notFound, label %NotFound, label %Found
 
@@ -173,7 +737,7 @@ Found:
     ret %Exp %firstBinding
 
 NotFound:
-    %restAssoc = call NILCC %Exp @nil_cdr(%Exp %assocList)
+    %restAssoc = call NILCC %Exp @Cdr(%Exp %assocList)
     ; Trivial tail call
     %binding = call NILCC %Exp @nil_assoc(%Exp %key, %Exp %restAssoc)
 
@@ -185,17 +749,44 @@ NotFound:
 ;
 ;**********************************************************************
 
-    #define UNKNOWNSYMBOLARRAY_LEN 16
-    %UnknownSymbolType = type [UNKNOWNSYMBOLARRAY_LEN x %c_char]
+    %UnknownSymbolType = type [16 x %c_char]
     @unknownSymbolArray = internal constant %UnknownSymbolType
         c"unknown symbol \00"
 
 define NILCC %Exp
 @EnvLookup(%Exp %exp, %Exp %env)
 {
-    ; FIXME: change from using assoc lists to using environments
-    ; (lists of assoc lists)
-    %binding = call NILCC %Exp @nil_assoc(%Exp %exp, %Exp %env)
+    %cellp = call NILCC i1 @IsCell(%Exp %env)
+    br i1 %cellp, label %IsCell, label %NotCell
+
+NotCell:
+    %nilp = call NILCC i1 @IsNil(%Exp %env)
+    br i1 %nilp, label %UnknownSymbol, label %NotNil
+
+NotNil:
+    ; This can't happen if the nil code is correct
+    cant_happen()
+    br label %NotNil
+
+UnknownSymbol:
+    %selfquote = load i1* @selfQuote
+    br i1 %selfquote, label %SelfQuote, label %ThrowException
+
+SelfQuote:
+    ret %Exp %exp
+
+ThrowException:
+    %unknownSymbolPtr = getelementptr
+        %UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0
+    call %c_int @putstring(%c_char* %unknownSymbolPtr)
+    call NILCC void @PrintExp(%Exp %exp)
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
+    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_UNKNOWN_SYMBOL)
+    ret %Exp %xpn
+
+IsCell:
+    %context = call NILCC %Exp @Car(%Exp %env)
+    %binding = call NILCC %Exp @nil_assoc(%Exp %exp, %Exp %context)
 
         #ifndef NDEBUG
         ; When used internally, should be impossible for assoc
@@ -205,19 +796,16 @@ define NILCC %Exp
         #endif
 
     %found = call NILCC i1 @NotNil(%Exp %binding)
-    br i1 %found, label %FoundSymbol, label %UnknownSymbol
+    br i1 %found, label %FoundSymbol, label %NotFound
 
-UnknownSymbol:
-    %unknownSymbolPtr = getelementptr
-        %UnknownSymbolType* @unknownSymbolArray, i64 0, i64 0
-    call %c_int @putstring(%c_char* %unknownSymbolPtr)
-    call NILCC void @PrintExp(%Exp %exp)
-    call %c_int @putchar(%c_int ASCII_NEWLINE)
-    %xpn = call NILCC %Exp @Exception2Exp(%Word NIL_UNKNOWN_SYMBOL)
-    ret %Exp %xpn
+NotFound:
+    ; Recurse and check next context
+    %outerEnv = call NILCC %Exp @Cdr(%Exp %env)
+    %outerBinding = call NILCC %Exp @EnvLookup(%Exp %exp, %Exp %outerEnv)
+    ret %Exp %outerBinding
 
 FoundSymbol:
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %binding)
+    %cdr = call NILCC %Exp @Cdr(%Exp %binding)
 
         #ifndef NDEBUG
         ; Must be a list
@@ -225,12 +813,12 @@ FoundSymbol:
         assert(%isCell)
         ; Must be a 1-element list--we have no good use for anything
         ; else!
-        %cddr = call NILCC %Exp @nil_cdr(%Exp %cdr)
+        %cddr = call NILCC %Exp @Cdr(%Exp %cdr)
         %isNil = call NILCC i1 @IsNil(%Exp %cddr)
         assert(%isNil)
         #endif
 
-    %cadr = call NILCC %Exp @nil_car(%Exp %cdr)
+    %cadr = call NILCC %Exp @Car(%Exp %cdr)
     ret %Exp %cadr
 }
 
@@ -288,10 +876,13 @@ Symbol:
 ;
 ;**********************************************************************
 
-    #define CANNOTAPPLYARRAY_LEN 14
-    %CannotApplyType = type [CANNOTAPPLYARRAY_LEN x %c_char]
+    %CannotApplyType = type [14 x %c_char]
     @cannotApplyArray = internal constant %CannotApplyType
         c"cannot apply \00"
+
+    %BadArgNumType = type [35 x %c_char]
+    @badArgNumArray = internal constant %BadArgNumType
+        c"\0Ahad %ld arguments, required %ld\0A\0A\00"
 
 define NILCC %Exp
 @Apply(%Exp %combination, %Exp %env)
@@ -303,7 +894,7 @@ Initial:
         assert(%isCell)
         #endif
 
-    %car = call NILCC %Exp @nil_car(%Exp %combination)
+    %car = call NILCC %Exp @Car(%Exp %combination)
 
     ; For now, always evaluate the function.  This may have to
     ; change when we get to implementing user functions and
@@ -340,14 +931,46 @@ CannotApply:
     ret %Exp %xpn
 
 Primitive:
+    ; FIXME: break this out into a separate 'ApplyPrimitive()' function
     %prim = call NILCC %nil_primitive* @Exp2nil_primitive(%Exp %fn)
     %primFnPtr = getelementptr %nil_primitive* %prim, i64 0, i32 0
-    %primFn = load %Exp (%Exp)** %primFnPtr
+    %primFn = load %PrimFn** %primFnPtr
 
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %combination)
-    ; We don't evaluate the args before calling--*all* primitives
-    ; are magic
-    %result = call NILCC %Exp %primFn(%Exp %cdr)
+    %primArgNumPtr = getelementptr %nil_primitive* %prim, i64 0, i32 1
+    %primArgNum = load %Word* %primArgNumPtr
+    %anyArgs = icmp eq %Word %primArgNum, NIL_ARGS_ANY
+    %cdr = call NILCC %Exp @Cdr(%Exp %combination)
+    br i1 %anyArgs, label %GoodArgNum, label %CheckArgs
+
+CheckArgs:
+    %argNum = call NILCC %Word @Len(%Exp %cdr)
+
+    %goodArgNum = icmp eq %Word %argNum, %primArgNum
+    br i1 %goodArgNum, label %GoodArgNum, label %BadArgNum
+
+BadArgNum:
+    %badArgNumStr = getelementptr %BadArgNumType* @badArgNumArray, i64 0, i64 0
+    call %c_int (%c_char*, ...)* @printf(%c_char* %badArgNumStr, %Word %argNum,
+                                         %Word %primArgNum)
+    %badArgsXpn = call NILCC %Exp @Exception2Exp(%Word NIL_BAD_ARG_NUM)
+    ret %Exp %badArgsXpn
+
+GoodArgNum:
+    %magicPtr = getelementptr %nil_primitive* %prim, i64 0, i32 3
+    %magic = load i1* %magicPtr
+    br i1 %magic, label %IsMagic, label %NotMagic
+
+NotMagic:
+    %evalArgs = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
+    %argException = call NILCC i1 @IsException(%Exp %evalArgs)
+    br i1 %argException, label %ArgException, label %IsMagic
+
+ArgException:
+    ret %Exp %evalArgs
+
+IsMagic:
+    %args = phi %Exp [%evalArgs, %NotMagic], [%cdr, %GoodArgNum]
+    %result = call NILCC %Exp %primFn(%Exp %args, %Exp %env)
     ret %Exp %result
 }
 
@@ -356,10 +979,9 @@ Primitive:
 ;
 ;**********************************************************************
 
-#define DOTPAIRARRAY_LEN 36
-%DotPairType = type [DOTPAIRARRAY_LEN x %c_char]
-@dotPairArray = internal constant %DotPairType
-    c"Error: can't evaluate a dotted pair\00"
+    %DotPairType = type [37 x %c_char]
+    @dotPairArray = internal constant %DotPairType
+        c"Error: can't evaluate a dotted pair\0A\00"
 
 define NILCC %Exp
 @EvalList(%Exp %exp, %Exp %env)
@@ -381,24 +1003,23 @@ NotNil:
     %dotPairString = getelementptr %DotPairType* @dotPairArray,
                                                     i64 0, i64 0
     call ccc %c_int @puts(%c_char* %dotPairString)
-    call %c_int @putchar(%c_int ASCII_NEWLINE)
     %errorExp = call NILCC %Exp @Exception2Exp(%Word NIL_EVAL_DOTPAIR)
     ret %Exp %errorExp
 
 Cell:
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %exp)
     %first = call NILCC %Exp @Eval(%Exp %car, %Exp %env)
     %firstOK = call NILCC i1 @NotException(%Exp %first)
     br i1 %firstOK, label %DoCDR, label %Exception
 
 DoCDR:
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
     %rest = call NILCC %Exp @EvalList(%Exp %cdr, %Exp %env)
     %restOK = call NILCC i1 @NotException(%Exp %rest)
     br i1 %restOK, label %DoCons, label %Exception
 
 DoCons:
-    %cons = call NILCC %Exp @nil_cons(%Exp %first, %Exp %rest)
+    %cons = call NILCC %Exp @Cons(%Exp %first, %Exp %rest)
     ret %Exp %cons
 
 Exception:
@@ -447,40 +1068,20 @@ Done:
 }
 
 ;**********************************************************************
-; NewlineIf
-;
-;**********************************************************************
-
-define NILCC void
-@NewlineIf(i1 %cond)
-{
-    br i1 %cond, label %Newline, label %Done
-
-Newline:
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
-    br label %Done
-
-Done:
-    ret void
-}
-
-;**********************************************************************
 ; PrintWelcome
 ;
 ;**********************************************************************
 
-    #define WELCOMEARRAY_LEN 62
-    @welcomeArray = internal constant [WELCOMEARRAY_LEN x %c_char]
-        c"Welcome to nil v0.0.7.  Enter '(quit)' at the prompt to exit.\00"
+    %WelcomeArrayType = type [51 x %c_char]
+    @welcomeArray = internal constant %WelcomeArrayType
+        c"\0AWelcome to nil v0.0.8.  Enter '(help)' for help.\0A\00"
 
 define NILCC void
 @PrintWelcome()
 {
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
-    %welcomeString = getelementptr [WELCOMEARRAY_LEN x %c_char]*
+    %welcomeString = getelementptr %WelcomeArrayType*
                                            @welcomeArray, i64 0, i64 0
     call ccc %c_int @puts(%c_char* %welcomeString)
-    call ccc %c_int @putchar(%c_int ASCII_NEWLINE)
 
     ret void
 }
@@ -546,7 +1147,7 @@ define NILCC void
     @rParenArray = internal constant [RPARENARRAY_LEN x %c_char]
         c"Unmatched ')'\00"
 
-define i1
+define NILCC i1
 @HandleParserException(%Exp %code)
 {
     switch %Exp %code, label %CantHappen [
@@ -593,11 +1194,6 @@ ExtraRParen:
 define %c_int
 @main(%c_int %argc, %c_char **%argv)
 {
-    ; This flag is necessary to avoid double-spacing the prompt when
-    ; nothing was entered.
-    %hadInputPtr = alloca i1
-    store i1 0, i1* %hadInputPtr
-
     ; The initial evaluation environment
     %env = call NILCC %Exp @GetEnv()
 
@@ -614,16 +1210,15 @@ ReadExp:
     ; Because of single assignment, this is more convenient
     ; to load here even though only Newline and the exception
     ; handlers need it
-    %hadInput = load i1* %hadInputPtr
 
     switch %c_int %code, label %CantHappen [
 
-        %c_int NIL_EXCEPTION, label  %ParseException
+        %c_int NIL_EXCEPTION, label   %ParseException
 
-        %c_int ASCII_NEWLINE,  label %NewLine
+        %c_int ASCII_NEWLINE, label   %NewLine
 
-        %c_int NIL_SYMBOL,   label   %EvalExp
-        %c_int NIL_CELL,     label   %EvalExp
+        %c_int NIL_SYMBOL,    label   %EvalExp
+        %c_int NIL_CELL,      label   %EvalExp
     ]
 
 CantHappen:
@@ -631,15 +1226,11 @@ CantHappen:
     br label %CantHappen
 
 ParseException:
-    call NILCC void @NewlineIf(i1 %hadInput)
     %exception = extractvalue %ParseExp %parseExp, 1
     %continue = call NILCC i1 @HandleParserException(%Exp %exception)
-    store i1 0, i1* %hadInputPtr
     br i1 %continue, label %ReadExp, label %Exit
 
 NewLine:
-    call NILCC void @NewlineIf(i1 %hadInput)
-    store i1 0, i1* %hadInputPtr
     br label %Prompt
 
 EvalExp:
@@ -647,6 +1238,7 @@ EvalExp:
     %exp = call NILCC %Exp @Eval(%Exp %unevalExp, %Exp %env)
     call NILCC void @PrintResultPrefix()
     call NILCC void @PrintExp(%Exp %exp)
+    call %c_int @putchar(%c_int ASCII_NEWLINE)
 
     ; If we got an exception, toss the rest of the line
     %evalOK = call NILCC i1 @NotException(%Exp %exp)
@@ -657,8 +1249,6 @@ EvalException:
     br label %EvalOK
 
 EvalOK:
-    call ccc %c_int @putchar(%c_int ASCII_SPACE)
-    store i1 1, i1* %hadInputPtr
     br label %ReadExp
 
 Exit:

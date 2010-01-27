@@ -40,8 +40,10 @@
     ; Internal representation--a primitive is a native function over
     ; expressions.  The word is the required number of arguments so
     ; the interpreter can do some sanity checking, and the string is
-    ; a printing format
-    %nil_primitive = type {%Exp (%Exp)*, %Word, %c_char*}
+    ; a printing format.  The bit flag is whether the primitive is magic
+    ; (i.e. handles its own argument evaluation like a macro)
+    %PrimFn = type %Exp (%Exp, %Exp)
+    %nil_primitive = type {%PrimFn*, %Word, %c_char*, i1}
 
 ; Tag field type values.
 
@@ -49,18 +51,18 @@
     ; assumes the size of the tag field, so it can be extended as needed
     ; simply by changing the type here.
 
-    #define TAG_BITS 2
-    %Tag = type i2
-    #define MAX_TAG 3
+    #define TAG_BITS 3
+    %Tag = type i3
+    #define MAX_TAG 7
 
     ; For now, I sometimes change these values randomly to ensure the code
     ; is clean and not depending on particular bit patterns.  They should
     ; fit insize a %Tag type (or they'll be silently wrapped), but otherwise
     ; are arbitrary.
-    #define    SYMBOL_TAG  0
-    #define      CELL_TAG  1
-    #define EXCEPTION_TAG  2
-    #define PRIMITIVE_TAG  3
+    #define    SYMBOL_TAG  1
+    #define      CELL_TAG  2
+    #define EXCEPTION_TAG  3
+    #define PRIMITIVE_TAG  4
 
     ; We define Nil as the null symbol (or at least not as the null CELL,
     ; which is an obvious choice as nil is the empty list) instead of the
@@ -80,6 +82,7 @@
     declare NILCC %Exp  @SetTag(%Exp %exp, %Tag %tag)
     declare NILCC i1    @TagIsClear(%Exp %exp)
     declare NILCC %Word @ShiftOutTag(%Exp %exp)
+    declare NILCC %Word @SignedShiftOutTag(%Exp %exp)
     declare NILCC %Exp  @ShiftInTag(%Word %word)
 
 ; Conversions
@@ -103,6 +106,9 @@
 ; The "seven primitive operators" of Paul Graham's paper, plus
 ; internal forms
 
+    ; #1 -- quote
+    ; No internal form
+
     ; #2 -- atom
     declare NILCC i1 @IsAtom(%Exp %exp) ; Internal form
 
@@ -112,18 +118,22 @@
     declare NILCC i1 @NotEq(%Exp %lhs, %Exp %rhs)
 
     ; #4 -- car
-    declare NILCC %Exp @nil_car(%Exp %exp)
+    declare NILCC %Exp @Car(%Exp %exp)
 
     ; #5 -- cdr
-    declare NILCC %Exp @nil_cdr(%Exp %exp)
+    declare NILCC %Exp @Cdr(%Exp %exp)
 
     ; #6 -- cons
-    declare NILCC %Exp @nil_cons(%Exp %car, %Exp %cdr)
+    declare NILCC %Exp @Cons(%Exp %car, %Exp %cdr)
+
+    ; #7 -- cond
+    ; No internal form
 
 ; Other tests
 
     declare NILCC i1 @IsSymbol(%Exp %exp)
     declare NILCC i1 @IsCell(%Exp %exp)
+    declare NILCC i1 @IsList(%Exp %exp)
     declare NILCC i1 @IsPrimitive(%Exp %exp)
     declare NILCC i1 @IsException(%Exp %exp)
     declare NILCC i1 @NotException(%Exp %exp)
@@ -132,11 +142,19 @@
 
 ; Other symbol manipulations
 
+    ; Symbol creation
     ; The interfaces are somewhat inconsistent, but convenient
     declare NILCC %Exp       @NewSymbol(%c_char* %name)
     declare NILCC %nil_cell* @NewCell()
-    declare NILCC %Exp       @NewPrimitive(%Exp (%Exp)*, %Word %argCount,
-                                           %c_char* %printForm)
+    declare NILCC %Exp       @NewPrimitive(%PrimFn*, %Word %argCount,
+                                           %c_char* %printForm, i1 %magic)
+
+    ; Lists
+    declare NILCC %Word @Len(%Exp %list)
+
+; Exceptions
+
+    declare NILCC %c_char* @ExceptionMsg(%Word %code)
 
 ; Expression I/O
     declare NILCC void @PrintExp(%Exp %exp)

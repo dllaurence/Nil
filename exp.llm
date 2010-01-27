@@ -226,6 +226,21 @@ define NILCC %Word
 }
 
 ;**********************************************************************
+; SignedShiftOutTag
+;
+; Same as ShiftOutTag, but with a sign-preserving shift.
+;
+;**********************************************************************
+
+define NILCC %Word
+@SignedShiftOutTag(%Exp %exp)
+{
+    %value = ashr %Exp %exp, TAG_BITS
+
+    ret %Word %value
+}
+
+;**********************************************************************
 ; ShiftInTag
 ;
 ; Warning: this low-level function leaves a blank tag field to be
@@ -480,7 +495,7 @@ define NILCC %Word
         br i1 %checkConversion, label %Check, label %NoCheck
         Check:
         store i1 0, i1* @except_guard
-        %newExp = call NILCC %Word @Exception2Exp(%Word %result)
+        %newExp = call NILCC %Exp @Exception2Exp(%Word %result)
         store i1 1, i1* @except_guard
         %equal = icmp eq %Exp %exp, %newExp
         assert(%equal)
@@ -540,13 +555,12 @@ define NILCC i1
 
 ; #4 -- car
 define NILCC %Exp
-@nil_car(%Exp %exp)
+@Car(%Exp %exp)
 {
-        ;FIXME: report errors instead of dying.  Not
-        ; within #ifndef NDEBUG because until fixed
-        ; this *will* happen and is not acceptable.
+        #ifndef NDEBUG
         %cellp = call NILCC i1 @IsCell(%Exp %exp)
         assert(%cellp)
+        #endif
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %carPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 0
@@ -557,11 +571,12 @@ define NILCC %Exp
 
 ; #5 -- cdr
 define NILCC %Exp
-@nil_cdr(%Exp %exp)
+@Cdr(%Exp %exp)
 {
-        ;FIXME: report errors instead of dying
+        #ifndef NDEBUG
         %cellp = call NILCC i1 @IsCell(%Exp %exp)
         assert(%cellp)
+        #endif
 
     %cellPtr = call NILCC %nil_cell* @Exp2nil_cell(%Exp %exp)
     %cdrPtr = getelementptr %nil_cell* %cellPtr, i32 0, i32 1
@@ -572,7 +587,7 @@ define NILCC %Exp
 
 ; #6 -- cons
 define NILCC %Exp
-@nil_cons(%Exp %car, %Exp %cdr)
+@Cons(%Exp %car, %Exp %cdr)
 {
     %newCell = call NILCC %nil_cell* @NewCell()
 
@@ -592,7 +607,7 @@ define NILCC %Exp
 ;**********************************************************************
 ; IsSymbol
 ;
-; Returns true if the expression is a (possibly nil) symbol.
+; Returns true iff the expression is a (possibly nil) symbol.
 ;
 ;**********************************************************************
 
@@ -607,7 +622,7 @@ define NILCC i1
 ;**********************************************************************
 ; IsCell
 ;
-; Returns true if the expression is a (non-nil) cell.
+; Returns true iff the expression is a (non-nil) cell.
 ;
 ;**********************************************************************
 
@@ -620,9 +635,36 @@ define NILCC i1
 }
 
 ;**********************************************************************
+; IsList
+;
+; Returns true iff the expression is a cell or nil.
+;
+; FIXME: Are there places where having this test earlier would have
+; simplified the code?
+;
+;**********************************************************************
+
+define NILCC i1
+@IsList(%Exp %exp)
+{
+    %cellp = call NILCC i1 @IsCell(%Exp %exp)
+    br i1 %cellp, label %True, label %NotCell
+
+NotCell:
+    %isNill = call NILCC i1 @IsNil(%Exp %exp)
+    br i1 %isNill, label %True, label %False
+
+False:
+    ret i1 false
+
+True:
+    ret i1 true
+}
+
+;**********************************************************************
 ; IsPrimitive
 ;
-; Returns true if the expression is a primitive.
+; Returns true iff the expression is a primitive.
 ;
 ;**********************************************************************
 
@@ -637,7 +679,7 @@ define NILCC i1
 ;**********************************************************************
 ; IsException
 ;
-; Returns true if the expression is an exception.
+; Returns true iff the expression is an exception.
 ;
 ;**********************************************************************
 
@@ -652,7 +694,7 @@ define NILCC i1
 ;**********************************************************************
 ; NotException
 ;
-; Returns false if the expression is an exception.
+; Returns false iff the expression is an exception.
 ;
 ;**********************************************************************
 
@@ -667,7 +709,7 @@ define NILCC i1
 ;**********************************************************************
 ; IsNil
 ;
-; Returns true if the expression is nil.
+; Returns true iff the expression is nil.
 ;
 ;**********************************************************************
 
@@ -682,7 +724,7 @@ define NILCC i1
 ;**********************************************************************
 ; NotNil
 ;
-; Returns true if the expression is not nil.
+; Returns true iff the expression is not nil.
 ;
 ;**********************************************************************
 
@@ -725,7 +767,7 @@ define NILCC %Exp
 ; NewCell
 ;
 ; Returns a newly allocated cell.  Its fields must be set before use.
-; This really isn't intended to be called directly--use nil_cons.
+; This really isn't intended to be called directly--use Cons.
 ;
 ;**********************************************************************
 
@@ -752,15 +794,19 @@ define NILCC %nil_cell*
 ;**********************************************************************
 
 define NILCC %Exp
-@NewPrimitive(%Exp (%Exp)* %fnPtr, %Word %argCount, %c_char* %printForm)
+@NewPrimitive(%PrimFn* %fnPtr, %Word %argCount, %c_char* %printForm,
+              i1 %magic)
 {
         #ifndef NDEBUG
         ; Better not be a null function pointer
-        %notNull = icmp ne %Exp (%Exp)* %fnPtr, null
+        %notNull = icmp ne %PrimFn* %fnPtr, null
         assert(%notNull)
 
-        ; Must either have a non-negative argument count or -1 for "any"
-        %argCountOK = icmp sge %Word %argCount, -1
+        ; Must either have a non-negative argument count or NIL_ARGS_ANY
+        ; for "any"
+        %argCountNonNeg = icmp sge %Word %argCount, 0
+        %argCountAny = icmp eq %Word %argCount, NIL_ARGS_ANY
+        %argCountOK = or i1 %argCountNonNeg, %argCountAny
         assert(%argCountOK)
 
         ; Check to see that the string is at least one character long
@@ -780,7 +826,7 @@ define NILCC %Exp
 
     ; Set function pointer
     %fnFieldPtr = getelementptr %nil_primitive* %newPrim, i64 0, i32 0
-    store %Exp (%Exp)* %fnPtr, %Exp (%Exp)** %fnFieldPtr
+    store %PrimFn* %fnPtr, %PrimFn** %fnFieldPtr
 
     ; Set the argument count
     %argCountField = getelementptr %nil_primitive* %newPrim, i64 0, i32 1
@@ -793,16 +839,118 @@ define NILCC %Exp
     %printFormField = getelementptr %nil_primitive* %newPrim, i64 0, i32 2
     store %c_char* %printForm, %c_char** %printFormField
 
+    ; Set the magic bit
+    %magicField = getelementptr %nil_primitive* %newPrim, i64 0, i32 3
+    store i1 %magic, i1* %magicField
+
     %exp = call NILCC %Exp @nil_primitive2Exp(%nil_primitive* %newPrim)
 
     ret %Exp %exp
 }
 
 ;**********************************************************************
-; PrintExp
+; LenImp
 ;
-; FIXME: should use the atom predicate and factor out a PrintAtom
-; method.
+; Implementation for Len--written this way for tail recursion
+;
+;**********************************************************************
+
+define NILCC %Word
+@LenImp(%Exp %list, %Word %count)
+{
+    %isNil = call NILCC i1 @IsNil(%Exp %list)
+    br i1 %isNil, label %IsNil, label %NotNil
+
+IsNil:
+    ret %Word %count
+
+NotNil:
+        #ifndef NDEBUG
+        %isCell = call NILCC i1 @IsCell(%Exp %list)
+        assert(%isCell)
+        #endif
+
+    %rest = call NILCC %Exp @Cdr(%Exp %list)
+    %restCount = add %Word %count, 1
+    %len = call NILCC %Word @LenImp(%Exp %rest, %Word %restCount)
+    ret %Word %len
+}
+
+;**********************************************************************
+; Len
+;
+;**********************************************************************
+
+define NILCC %Word
+@Len(%Exp %list)
+{
+    %len = call NILCC %Word @LenImp(%Exp %list, %Word 0)
+    ret %Word %len
+}
+
+;**********************************************************************
+; ExceptionMsg
+;
+;**********************************************************************
+
+    %UnknownSymbolType = type [15 x %c_char]
+    @unknownSymbolArray = internal constant %UnknownSymbolType
+        c"unknown symbol\00"
+
+    %DotPairType = type [29 x %c_char]
+    @dotPairArray = internal constant %DotPairType
+        c"can't evaluate a dotted pair\00"
+
+    %CannotApplyType = type [22 x %c_char]
+    @cannotApplyArray = internal constant %CannotApplyType
+        c"cannot apply operator\00"
+
+    %ExpectedListType = type [14 x %c_char]
+    @expectedListArray = internal constant %ExpectedListType
+        c"expected list\00"
+
+    %BadArgNumType = type [26 x %c_char]
+    @badArgNumArray = internal constant %BadArgNumType
+        c"mismatched argument count\00"
+
+    %MalformedArgsType = type [15 x %c_char]
+    @malformedArgsArray = internal constant %MalformedArgsType
+        c"malformed args\00"
+
+    #define EXCEPTIONMSGS_NUM 6
+    %ExceptionMsgsType = type [EXCEPTIONMSGS_NUM x %c_char*]
+    @exceptionMsgs = internal constant %ExceptionMsgsType [
+        %c_char* getelementptr (%UnknownSymbolType* @unknownSymbolArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%DotPairType* @dotPairArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%CannotApplyType* @cannotApplyArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%ExpectedListType* @expectedListArray,
+                                i64 0, i64 0 ),
+        %c_char* getelementptr (%BadArgNumType* @badArgNumArray,
+                                i64 0, i64 0),
+        %c_char* getelementptr (%MalformedArgsType* @malformedArgsArray,
+                                i64 0, i64 0)
+    ]
+
+define NILCC %c_char*
+@ExceptionMsg(%Word %code)
+{
+        #ifndef NDEBUG
+        %nonNeg = icmp sge %Word %code, 0
+        assert(%nonNeg)
+        %smallEnough = icmp slt %Word %code, EXCEPTIONMSGS_NUM
+        assert(%smallEnough)
+        #endif
+
+    %msgPtr = getelementptr %ExceptionMsgsType* @exceptionMsgs, i64 0, %Word %code
+    %msg = load %c_char** %msgPtr
+    ret %c_char* %msg
+}
+
+;**********************************************************************
+; PrintExp
 ;
 ;**********************************************************************
 
@@ -818,9 +966,9 @@ IsAtom:
 
 IsCell:
     call ccc %c_int @putchar(%c_int ASCII_LPAREN)
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %exp)
     call NILCC void @PrintExp(%Exp %car)
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
     call NILCC void @PrintCDR(%Exp %cdr)
     call ccc %c_int @putchar(%c_int ASCII_RPAREN)
     ret void
@@ -838,9 +986,9 @@ IsCell:
         c"#primitive: %s#\00"
 %primitiveFormatType = type [PRIMITIVEFORMAT_LEN x %c_char]
 
-#define EXCEPTIONFORMAT_LEN 16
+#define EXCEPTIONFORMAT_LEN 20
 @exceptionFormat = internal constant [EXCEPTIONFORMAT_LEN x %c_char]
-        c"#exception:%ld#\00"
+        c"#exception %ld: %s#\00"
 %exceptionFormatType = type [EXCEPTIONFORMAT_LEN x %c_char]
 
 define NILCC void
@@ -850,8 +998,8 @@ define NILCC void
 
     switch %Tag %tag, label %CantHappen [
 
-        %Tag SYMBOL_TAG,    label %SymbolTag
-        %Tag   CELL_TAG,    label %CantHappen
+        %Tag    SYMBOL_TAG, label %SymbolTag
+        %Tag      CELL_TAG, label %CantHappen
         %Tag PRIMITIVE_TAG, label %IsPrimitive
         %Tag EXCEPTION_TAG, label %IsException
     ]
@@ -888,12 +1036,13 @@ IsPrimitive:
 
 IsException:
     %code = call NILCC %Word @Exp2Exception(%Exp %exp)
+    %msg = call NILCC %c_char* @ExceptionMsg(%Word %code)
 
-    %exceptionString = getelementptr %exceptionFormatType*
+    %exceptionFormatStr = getelementptr %exceptionFormatType*
                                  @exceptionFormat, i64 0, i64 0
     call ccc %c_int (%c_char*, ...)*
-                     @printf(%c_char* %exceptionString,
-                             %Word %code)
+                     @printf(%c_char* %exceptionFormatStr,
+                             %Word %code, %c_char* %msg)
     ret void
 }
 
@@ -928,9 +1077,9 @@ IsAtom:
 IsCell:
     ; Another cell, so we need a separator
     call ccc %c_int @putchar(%c_int ASCII_SPACE)
-    %car = call NILCC %Exp @nil_car(%Exp %exp)
+    %car = call NILCC %Exp @Car(%Exp %exp)
     call NILCC void @PrintExp(%Exp %car)
-    %cdr = call NILCC %Exp @nil_cdr(%Exp %exp)
+    %cdr = call NILCC %Exp @Cdr(%Exp %exp)
     call NILCC void @PrintCDR(%Exp %cdr)
     ret void
 }

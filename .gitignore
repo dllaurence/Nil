@@ -4,6 +4,10 @@
 *.o
 # Ignore preprocessed LLVM files
 *.ll
+# Ignore bitcode files
+*.bc
+*.optbc
+*.gbc
 # Ignore the generated c_defs header
 c_defs.llh
 # Ignore the project executables

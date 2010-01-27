@@ -28,8 +28,8 @@
 ; this code on anything that old?
 
     %Word = type %c_intptr_t
-    #define WORD_T_SIZEOF C_INTPTR_T_SIZEOF
-    #define WORD_T_BITSOF C_INTPTR_T_BITSOF
+    #define WORD_SIZEOF C_INTPTR_T_SIZEOF
+    #define WORD_BITSOF C_INTPTR_T_BITSOF
 
 ; Codes common to multiple modules
 
@@ -59,8 +59,13 @@
     #define NIL_EVAL_DOTPAIR      1
     #define NIL_CANNOT_APPLY      2
     #define NIL_EXPECTED_LIST     3
+    #define NIL_BAD_ARG_NUM       4
+    #define NIL_MALFORMED_ARGS    5
 
     ; Evaluator Types
+
+    ; Code for 'any number of arguments
+    #define NIL_ARGS_ANY -1
 
 #endif
 

@@ -59,19 +59,6 @@ main(int argc, char *argv[])
     IMPORT_TYPE(long);
     IMPORT_TYPE(intptr_t);
     IMPORT_TYPE(size_t);
-#if 0
-    printf("#define C_CHAR_BITS %d\n", bitsof(char));
-    printf("%%c_char = type i%d\n", CHAR_BIT);
-
-    #define INT_BITS (sizeof(int)*CHAR_BIT)
-    printf("#define C_INT_SIZEOF %d\n", sizeof(int));
-    printf("#define C_INT_BITS %d\n", sizeof(int)*CHAR_BIT);
-    printf("%%c_int  = type i%d\n", sizeof(int)*CHAR_BIT);
-
-    #define INTPTR_BITS (sizeof(intptr_t)*CHAR_BIT)
-    printf("#define C_INTPTR_BITS %d\n", INTPTR_BITS);
-    printf("%%c_intptr_t  = type i%d\n", INTPTR_BITS);
-#endif
 
     puts("; C stdio constants");
     printf("#define C_EOF %d\n", EOF);
