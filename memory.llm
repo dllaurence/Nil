@@ -91,18 +91,17 @@ define NILCC i8*
     @pStringList = internal global %Exp NIL_VALUE
 
 ;**********************************************************************
-; PrintAllStrings
+; Strings
 ;
-; A debugging routine that prints the list of strings.
+; Return all defined (unique) strings.
 ;
 ;**********************************************************************
 
-define NILCC void
-@PrintAllStrings()
+define NILCC %Exp
+@Strings()
 {
     %stringList = load %Exp* @pStringList
-    call NILCC void @PrintExp(%Exp %stringList)
-    ret void
+    ret %Exp %stringList
 }
 
 ;**********************************************************************

@@ -4,7 +4,9 @@ README
 
 ChangeLog:
 
-    v0.0.7    * Primitive functions, evaluation
+    v0.0.8    * All seven standard primitives.
+
+    v0.0.7    * Primitive functions, evaluation.
 
     v0.0.6    * Evaluator skeleton.
 
@@ -56,18 +58,17 @@ Running:
 
 Type "./nil" in the build directory and behold the glory.
 
-In Nil 0.0.7 we have the beginning of actual evaluation.  The evaluator knows
-how to evaluate () to itself (it doesn't yet know that it is also named nil,
-however) and 'quit' to a primitive function object.  It also knows how to
-evaluate primitives, which means (quit) quits the program.  It reports errors
-on symbols it can't evaluate, and also knows that () can't be applied to
-anything even though it can evaluate it.
+In Nil 0.0.8 we have a minimal list-oriented language and even a small luxury
+or two.  In particular we have the seven primitive operators from Graham's (and
+therefore McCarthy's) paper: quote, atom, eq, car, cdr, cons, and cond, as well
+as the predefined values t and () needed by atom and cond.  We also have
+commands to quit, turn on and off a mode where undefined symbols are
+self-quoting, display known symbols and strings, and even a minimal help
+facility.  Of course there is a great deal of work under the hood to support
+that functionality.
 
-This simple functionality hides a great deal of internal work, of course.  The
-big additions are an exception type that allows reporting of and recovery from
-errors, and of course the primitive function type necessary to implement
-(quit).  They are implemented as full types rather than as hard-coded hacks
-in the evaluator so that they are first-class objects from the beginning.
+The most important features still missing are user-defined symbols and
+especially functions.
 
 HACKING
 
@@ -97,7 +98,7 @@ Main Nil implementation files:
 nil.llh       Global declarations (types, #defines) for all source files.
 
 nil.llm       has main(), and documentation you will want to read.  Also
-              the evaluator being developed.
+              the evaluator and language-level functions during development.
 
 System support files:
 
